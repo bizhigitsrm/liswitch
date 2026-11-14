@@ -2,7 +2,13 @@
 // Liswitch: XKB layout translator for text correction (F6)
 
 import GLib from 'gi://GLib';
-import Gdk from 'gi://Gdk?version=4.0';
+
+let Clutter = null;
+try {
+    Clutter = (await import('gi://Clutter')).default;
+} catch {
+    Clutter = null;
+}
 
 /**
  * Standard QWERTY / JCUKEN fallback maps for environments
@@ -208,11 +214,15 @@ export class TextTranslator {
                     }
                 }
                 try {
-                    const kval = Gdk.keyval_from_name(name);
-                    if (kval === 0)
-                        return null;
-                    const u = Gdk.keyval_to_unicode(kval);
-                    return u > 0 ? String.fromCodePoint(u) : null;
+                    if (Clutter) {
+                        const sym = Clutter[`KEY_${name}`];
+                        if (sym !== undefined && typeof Clutter.keysym_to_unicode === 'function') {
+                            const u = Clutter.keysym_to_unicode(sym);
+                            if (u > 0)
+                                return String.fromCodePoint(u);
+                        }
+                    }
+                    return null;
                 } catch {
                     return null;
                 }

@@ -15,12 +15,26 @@ try {
 
 let Clutter = null;
 let St = null;
+let Meta = null;
+let Shell = null;
 try {
     Clutter = (await import('gi://Clutter')).default;
     St = (await import('gi://St')).default;
 } catch {
     Clutter = null;
     St = null;
+}
+
+try {
+    Meta = (await import('gi://Meta')).default;
+} catch {
+    Meta = null;
+}
+
+try {
+    Shell = (await import('gi://Shell')).default;
+} catch {
+    Shell = null;
 }
 
 // Standard Linux evdev keycodes
@@ -56,6 +70,7 @@ export const TextCorrectionManager = GObject.registerClass({
         this._stageSignalId = 0;
         this._focusSignalId = 0;
         this._inactivityTimerId = 0;
+        this._pasteTimeoutId = 0;
         this._hotkeySettingId = 0;
         this._enabledSettingId = 0;
         this._hotkeyRegistered = false;
@@ -140,6 +155,11 @@ export const TextCorrectionManager = GObject.registerClass({
             this._inactivityTimerId = 0;
         }
 
+        if (this._pasteTimeoutId) {
+            GLib.Source.remove(this._pasteTimeoutId);
+            this._pasteTimeoutId = 0;
+        }
+
         this._virtualDevice = null;
         Log.debug('TextCorrectionManager: input tracking stopped');
     }
@@ -152,13 +172,13 @@ export const TextCorrectionManager = GObject.registerClass({
             return;
 
         try {
-            const Meta = imports.gi.Meta;
-            const Shell = imports.gi.Shell;
+            const flags = Meta?.KeyBindingFlags?.IGNORE_AUTOREPEAT ?? 16;
+            const mode = Shell?.ActionMode?.NORMAL ?? 1;
             Main.wm.addKeybinding(
                 'convert-hotkey',
                 this._settings,
-                Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
-                Shell.ActionMode.NORMAL,
+                flags,
+                mode,
                 () => {
                     this.convertLastWord();
                 }
@@ -382,7 +402,12 @@ export const TextCorrectionManager = GObject.registerClass({
                 clipboard.set_text(St.ClipboardType.CLIPBOARD, converted);
 
                 // Small delay to ensure clipboard sync before Ctrl+V
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 20, () => {
+                if (this._pasteTimeoutId) {
+                    GLib.Source.remove(this._pasteTimeoutId);
+                    this._pasteTimeoutId = 0;
+                }
+                this._pasteTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 20, () => {
+                    this._pasteTimeoutId = 0;
                     if (this._virtualDevice?.notify_key) {
                         const pasteTime = GLib.get_monotonic_time();
                         this._virtualDevice.notify_key(pasteTime, EVDEV_LEFTCTRL, Clutter.KeyState.PRESSED);

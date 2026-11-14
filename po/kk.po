@@ -1,0 +1,455 @@
+# Kazakh translation for liswitch.
+# Copyright (C) 2026 Liswitch Project
+# This file is distributed under the same license as the liswitch package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: liswitch 51.0\n"
+"Report-Msgid-Bugs-To: https://github.com/liswitch/liswitch/issues\n"
+"POT-Creation-Date: 2026-11-14 21:22+0500\n"
+"PO-Revision-Date: 2026-11-14 22:00+0500\n"
+"Last-Translator: Liswitch Team\n"
+"Language-Team: Kazakh\n"
+"Language: kk\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: prefs.js:44 prefs.js:402 prefs.js:530 prefs.js:683
+msgid "Disabled"
+msgstr "Сөндірулі"
+
+#: prefs.js:68
+msgid "General"
+msgstr "Жалпы"
+
+#: prefs.js:76
+msgid "Panel Indicator"
+msgstr "Панельдегі индикатор"
+
+#: prefs.js:77
+msgid "Configure the layout indicator in the top panel"
+msgstr "Жоғарғы панельдегі пернетақта индикаторын баптау"
+
+#: prefs.js:82
+msgid "Show Indicator"
+msgstr "Индикаторды көрсету"
+
+#: prefs.js:83
+msgid "Display the keyboard layout indicator in the top panel"
+msgstr "Жоғарғы панельде пернетақта тілі индикаторын көрсету"
+
+#: prefs.js:94
+msgid "Hide System Indicator"
+msgstr "Жүйелік индикаторды жасыру"
+
+#: prefs.js:95
+msgid "Hide standard GNOME keyboard indicator to prevent duplicates"
+msgstr "Қайталануды болдырмау үшін GNOME стандартты индикаторын жасыру"
+
+#: prefs.js:106
+msgid "Scroll to Switch Layout"
+msgstr "Тінтуір дөңгелегімен ауыстыру"
+
+#: prefs.js:107
+msgid "Switch layouts by scrolling the mouse wheel over the indicator"
+msgstr "Индикатор үстінде тінтуір дөңгелегін айналдыру арқылы тілді ауыстыру"
+
+#: prefs.js:118
+msgid "Short (uppercase, e.g. EN)"
+msgstr "Қысқаша (бас әріптер, мыс. EN)"
+
+#: prefs.js:119
+msgid "Full Name (e.g. English)"
+msgstr "Толық атауы (мыс. English)"
+
+#: prefs.js:120
+msgid "Lowercase (e.g. en)"
+msgstr "Кіші әріптер (мыс. en)"
+
+#: prefs.js:125
+msgid "Label Format"
+msgstr "Белгі пішімі"
+
+#: prefs.js:126
+msgid "Choose how layout names appear in the panel"
+msgstr "Панельде пернетақта тілінің қалай көрсетілетінін таңдаңыз"
+
+#: prefs.js:162
+msgid "On-Screen Display (OSD)"
+msgstr "Экрандық хабарлама (OSD)"
+
+#: prefs.js:163
+msgid "Visual notification popup when switching layouts"
+msgstr "Тілді ауыстырған кезде қалқымалы экрандық хабарлама"
+
+#: prefs.js:168
+msgid "Show OSD Pop-up"
+msgstr "OSD хабарламасын көрсету"
+
+#: prefs.js:169
+msgid "Display a brief centered notification when layout changes"
+msgstr "Тіл ауысқан кезде экран ортасында қысқаша хабарлама көрсету"
+
+#: prefs.js:183
+msgid "OSD Duration"
+msgstr "OSD ұзақтығы"
+
+#: prefs.js:184
+msgid "How long the OSD stays visible (in milliseconds)"
+msgstr "Экрандық хабарламаның көріну ұзақтығы (миллисекундпен)"
+
+#: prefs.js:211
+msgid "Show OSD on Window Restore"
+msgstr "Терезені қалпына келтіргенде OSD көрсету"
+
+#: prefs.js:212
+msgid ""
+"Display notification when layout is restored automatically by window memory"
+msgstr "Терезе жады тілді автоматты түрде қалпына келтіргенде хабарлама көрсету"
+
+#: prefs.js:240
+msgid "Diagnostics"
+msgstr "Диагностика"
+
+#: prefs.js:241
+msgid "Options for troubleshooting liswitch"
+msgstr "liswitch жұмысын тексеру және баптау параметрлері"
+
+#: prefs.js:246
+msgid "Debug Logging"
+msgstr "Жөндеу жазбалары"
+
+#: prefs.js:247
+msgid "Output detailed diagnostic messages to the system journal"
+msgstr "Жүйелік журналға толық диагностикалық хабарламаларды жазу"
+
+#: prefs.js:273
+msgid "Shortcuts"
+msgstr "Пернелер тіркесімдері"
+
+#: prefs.js:303
+msgid "Layout Switching Shortcuts"
+msgstr "Тіл ауыстыру тіркесімдері"
+
+#: prefs.js:304
+msgid "Configure keybindings to switch between configured input sources"
+msgstr "Енгізу көздері арасында ауысу үшін пернелер тіркесімдерін баптау"
+
+#: prefs.js:311
+msgid "Next Layout"
+msgstr "Келесі тіл"
+
+#: prefs.js:312
+msgid "Cycle forward through available input sources"
+msgstr "Қолжетімді тілдер бойынша алға қарай ауысу"
+
+#: prefs.js:319
+msgid "Previous Layout"
+msgstr "Алдыңғы тіл"
+
+#: prefs.js:320
+msgid "Cycle backward through available input sources"
+msgstr "Қолжетімді тілдер бойынша артқа қарай ауысу"
+
+#: prefs.js:326
+msgid "Direct Layout Selection"
+msgstr "Тілді тікелей таңдау"
+
+#: prefs.js:327
+msgid "Jump directly to a specific layout by number (1 to 4)"
+msgstr "Нөмірі бойынша белгілі бір тілге тікелей өту (1-ден 4-ке дейін)"
+
+#: prefs.js:335
+#, javascript-format
+msgid "Switch to Layout %d"
+msgstr "%d тіліне ауысу"
+
+#: prefs.js:336
+#, javascript-format
+msgid "Directly activate layout at index %d"
+msgstr "%d индексіндегі тілді тікелей белсендіру"
+
+#: prefs.js:343
+msgid "Modifier-Only Shortcuts Note"
+msgstr "Тек модификаторлық пернелер тіркесімі туралы ескертпе"
+
+#: prefs.js:345
+msgid ""
+"GNOME Shell keybindings require a non-modifier key (like Space, Letter, or "
+"Digit). Pure modifier combinations (such as Alt+Shift or Caps Lock) cannot "
+"be assigned via extension keybindings; they are managed at the system XKB "
+"level in Settings → Keyboard → Special Character Entry or GNOME Tweaks."
+msgstr "GNOME Shell пернелер тіркесімі модификатор емес пернені қажет етеді (бос орын, әріп немесе сан). Тек модификаторлардан тұратын тіркесімдерді (мысалы, Alt+Shift немесе Caps Lock) кеңейтім арқылы тағайындау мүмкін емес; олар жүйелік XKB деңгейінде Баптаулар → Пернетақта бөлімінде басқарылады."
+
+#: prefs.js:401
+#, javascript-format
+msgid "Reset to default shortcut (%s)"
+msgstr "Әдепкі тіркесімге қайтару (%s)"
+
+#: prefs.js:450
+msgid "Press keys…"
+msgstr "Пернелерді басыңыз…"
+
+#: prefs.js:451
+msgid "Press keys now — Escape to cancel, Backspace to disable"
+msgstr "Пернелерді қазір басыңыз — бас тарту үшін Escape, сөндіру үшін Backspace"
+
+#: prefs.js:485
+#, javascript-format
+msgid "Shortcut \"%s\" is already assigned to \"%s\"."
+msgstr "\"%s\" тіркесімі әлдеқашан \"%s\" әрекетіне тағайындалған."
+
+#: prefs.js:536
+#, javascript-format
+msgid "Modifier-only shortcut cannot be bound in GNOME Shell: %s"
+msgstr "Тек модификаторлардан тұратын тіркесім GNOME Shell-де қолданылмайды: %s"
+
+#: prefs.js:543
+#, javascript-format
+msgid "Conflict: shortcut \"%s\" is assigned to %s (%s)"
+msgstr "Қақтығыс: \"%s\" тіркесімі %s (%s) ішінде тағайындалған"
+
+#: prefs.js:550
+msgid "Free in System"
+msgstr "Жүйеде босату"
+
+#: prefs.js:572
+#, javascript-format
+msgid "Overriding system shortcut: %s (%s)"
+msgstr "Жүйелік тіркесімді қайта анықтау: %s (%s)"
+
+#: prefs.js:578
+msgid "Restore in System"
+msgstr "Жүйеде қалпына келтіру"
+
+#: prefs.js:612
+msgid "Memory"
+msgstr "Есте сақтау"
+
+#: prefs.js:632
+msgid "System Setting Conflict"
+msgstr "Жүйелік баптаулармен қақтығыс"
+
+#: prefs.js:633
+msgid "Notice regarding GNOME desktop input settings"
+msgstr "GNOME жұмыс үстелінің енгізу баптаулары туралы ескерту"
+
+#: prefs.js:638
+msgid "System \"Per-Window\" Switching Active ⚠️"
+msgstr "Жүйеде \"әр терезе үшін\" ауыстыру қосулы ⚠️"
+
+#: prefs.js:640
+msgid ""
+"GNOME Settings has \"Switch input sources individually for each window\" "
+"enabled. To avoid duplicate switching conflicts, liswitch layout memory is "
+"suspended."
+msgstr "GNOME баптауларында \"Әрбір терезе үшін бөлек енгізу көздерін ауыстыру\" қосулы. Қақтығыстарды болдырмау үшін liswitch жады тоқтатылды."
+
+#: prefs.js:647
+msgid "Disable in System"
+msgstr "Жүйеде сөндіру"
+
+#: prefs.js:675
+msgid "Layout Memory Mode"
+msgstr "Тілді есте сақтау режимі"
+
+#: prefs.js:676
+msgid "Remember and restore keyboard layout when switching between windows"
+msgstr "Терезелер арасында ауысқан кезде пернетақта тілін есте сақтау және қалпына келтіру"
+
+#: prefs.js:681
+msgid "Per-Application (recommended)"
+msgstr "Әр қолданба үшін (ұсынылады)"
+
+#: prefs.js:682
+msgid "Per-Window"
+msgstr "Әр терезе үшін"
+
+#: prefs.js:687
+msgid "Memory Mode"
+msgstr "Есте сақтау режимі"
+
+#: prefs.js:688
+msgid "Choose how layouts are tracked across applications and windows"
+msgstr "Қолданбалар мен терезелер бойынша тілді қадағалау тәсілін таңдаңыз"
+
+#: prefs.js:711
+msgid "Keep active layout"
+msgstr "Ағымдағы тілді сақтау"
+
+#: prefs.js:712
+msgid "Reset to first layout"
+msgstr "Бірінші тілге қайтару"
+
+#: prefs.js:716
+msgid "New Windows Initial Layout"
+msgstr "Жаңа терезелер үшін бастапқы тіл"
+
+#: prefs.js:717
+msgid "Action when focusing a window that has no saved layout"
+msgstr "Сақталған тілі жоқ терезеге өткен кездегі әрекет"
+
+#: prefs.js:741
+msgid "Excluded Applications"
+msgstr "Ерекшеленген қолданбалар"
+
+#: prefs.js:742
+msgid "Applications that should be ignored by layout memory"
+msgstr "Тіл жады ескермеуі керек қолданбалар"
+
+#: prefs.js:747
+msgid "Add application ID (e.g. org.gnome.Console)"
+msgstr "Қолданба идентификаторын қосу (мыс. org.gnome.Console)"
+
+#: prefs.js:753
+msgid "Excluded List"
+msgstr "Ерекшеліктер тізімі"
+
+#: prefs.js:772
+msgid "No applications excluded"
+msgstr "Ерекшеленген қолданбалар жоқ"
+
+#: prefs.js:776
+#, javascript-format
+msgid "%d application(s) excluded"
+msgstr "%d қолданба ерекшеленді"
+
+#: prefs.js:787
+msgid "Remove from excluded list"
+msgstr "Ерекшеліктер тізімінен өшіру"
+
+#: prefs.js:833
+msgid "About"
+msgstr "Кеңейтім туралы"
+
+#: prefs.js:864
+msgid "Advanced keyboard layout switcher for GNOME Shell 51"
+msgstr "GNOME Shell 51 үшін жетілдірілген пернетақта тілін ауыстырғыш"
+
+#: prefs.js:871
+#, javascript-format
+msgid "Version %s"
+msgstr "Нұсқасы %s"
+
+#: prefs.js:881
+msgid "Information"
+msgstr "Ақпарат"
+
+#: prefs.js:886
+msgid "Developer"
+msgstr "Әзірлеуші"
+
+#: prefs.js:892
+msgid "License"
+msgstr "Лицензия"
+
+#: prefs.js:898
+msgid "Platform"
+msgstr "Платформа"
+
+#: prefs.js:905
+msgid "Links & Support"
+msgstr "Сілтемелер мен қолдау"
+
+#: prefs.js:910
+msgid "Source Code"
+msgstr "Бастапқы код"
+
+#: prefs.js:917
+msgid "Open project repository"
+msgstr "Жоба қоймасын ашу"
+
+#: prefs.js:944
+msgid "Correction"
+msgstr "Мәтінді түзету"
+
+#: prefs.js:952
+msgid "Security & Privacy"
+msgstr "Қауіпсіздік және құпиялылық"
+
+#: prefs.js:957
+msgid "In-Memory Keystroke Buffer Notice"
+msgstr "Жадел жадтағы перне басу буфері туралы ескерту"
+
+#: prefs.js:958
+msgid ""
+"When enabled, the extension maintains a temporary buffer of recent "
+"keystrokes (up to 64 chars) strictly in memory to convert text typed in the "
+"wrong layout (e.g. \"ghbdtn\" → \"привет\"). The buffer is automatically "
+"cleared on window focus changes, Enter, Tab, Esc, any modifier, or after 3 "
+"seconds of inactivity. Keystrokes are NEVER written to disk or logs.\n"
+"\n"
+"⚠️ Important: Wayland protocol isolates application surfaces. Extensions "
+"cannot detect password fields inside web browsers or third-party apps. Do "
+"not use this feature when entering sensitive passwords."
+msgstr ""
+"Қосулы болғанда, кеңейтім қате тілде терілген мәтінді түрлендіру үшін соңғы басылған пернелердің (64 таңбаға дейін) уақытша буферін тек жедел жадта сақтайды (мыс. \"ghbdtn\" → \"привет\"). Терезе ауысқанда, Enter, Tab, Esc басылғанда немесе 3 секунд әрекетсіздіктен кейін буфер тазаланады. Перне басулары ЕШҚАШАН дискіге жазылмайды.\n"
+"\n"
+"⚠️ Маңызды: Wayland қолданбалар беттерін оқшаулайды. Кеңейтімдер браузерлерде құпиясөз өрістерін анықтай алмайды. Құпиясөздерді енгізген кезде бұл мүмкіндікті қолданбаңыз."
+
+#: prefs.js:964
+msgid "Configuration"
+msgstr "Баптаулар"
+
+#: prefs.js:969
+msgid "Enable Text Correction"
+msgstr "Мәтінді түзетуді қосу"
+
+#: prefs.js:970
+msgid "Convert text typed in the wrong layout into the alternate language"
+msgstr "Қате тілде терілген мәтінді балама тілге түрлендіру"
+
+#: prefs.js:981
+msgid "Double Left Shift Trigger"
+msgstr "Сол жақ Shift қос басу арқылы іске қосу"
+
+#: prefs.js:982
+msgid "Press Left Shift twice quickly to convert the last typed word"
+msgstr "Соңғы терілген сөзді түрлендіру үшін сол жақ Shift пернесін жылдам екі рет басыңыз"
+
+#: prefs.js:994
+msgid "Manual Hotkey"
+msgstr "Қолмен шақыру пернесі"
+
+#: prefs.js:995
+msgid "Keyboard shortcut to manually trigger text conversion"
+msgstr "Мәтінді түрлендіруді қолмен іске қосуға арналған пернелер тіркесімі"
+
+#: prefs.js:1004
+msgid "Convert Last Word"
+msgstr "Соңғы сөзді түрлендіру"
+
+#: prefs.js:1005
+msgid "Shortcut to trigger conversion of the most recently typed word"
+msgstr "Соңғы терілген сөзді түрлендіру пернесі"
+
+#: prefs.js:1013
+msgid "Reset to default shortcut (<Shift>Pause)"
+msgstr "Әдепкі тіркесімге қайтару (<Shift>Pause)"
+
+#: prefs.js:1062
+msgid "Press keys… (Esc: cancel, Backspace: disable)"
+msgstr "Пернелерді басыңыз… (Esc: бас тарту, Backspace: сөндіру)"
+
+#: src/indicator.js:77
+msgid "Keyboard layout: none configured"
+msgstr "Пернетақта тілі: бапталмаған"
+
+#: src/indicator.js:80 src/indicator.js:81
+#, javascript-format
+msgid "Keyboard layout: %s"
+msgstr "Пернетақта тілі: %s"
+
+#: src/indicator.js:100
+msgid "Keyboard Layout Indicator"
+msgstr "Пернетақта тілі индикаторы"
+
+#: src/indicator.js:221
+msgid "No layouts configured"
+msgstr "Тілдер бапталмаған"
+
+#: src/indicator.js:254
+msgid "Settings…"
+msgstr "Баптаулар…"
+

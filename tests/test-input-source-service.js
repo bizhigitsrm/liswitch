@@ -2,6 +2,7 @@
 // Pure GJS unit test for InputSourceService (no Shell required)
 // Run with: gjs -m tests/test-input-source-service.js
 
+import system from 'system';
 import {InputSourceService} from '../src/inputSourceService.js';
 import * as Log from '../src/log.js';
 
@@ -308,5 +309,5 @@ async function runTests() {
 
 runTests().catch(err => {
     console.error('\n[FATAL ERROR IN TESTS]:', err);
-    imports.system.exit(1);
+    system.exit(1);
 });

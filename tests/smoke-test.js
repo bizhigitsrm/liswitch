@@ -117,9 +117,9 @@ export async function run() {
         console.log(`[TEST] previous() restored index: ${service.getCurrentIndex()}`);
     }
 
-    // Perform 20 enable/disable cycles to verify leak-free and error-free transitions
-    console.log('[TEST] Performing 20 enable/disable cycles...');
-    for (let i = 1; i <= 20; i++) {
+    // Perform 100 enable/disable cycles to verify leak-free and error-free transitions
+    console.log('[TEST] Performing 100 enable/disable cycles...');
+    for (let i = 1; i <= 100; i++) {
         Main.extensionManager.disableExtension(uuid);
         if (ext.state === 1)
             throw new Error(`Iteration ${i}: Failed to disable extension`);
@@ -153,5 +153,5 @@ export async function run() {
             throw new Error(`Iteration ${i}: Status area indicator not registered after re-enable`);
     }
 
-    console.log('[TEST] All 20 enable/disable cycles completed successfully without errors!');
+    console.log('[TEST] All 100 enable/disable cycles completed successfully without errors!');
 }

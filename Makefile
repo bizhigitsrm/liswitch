@@ -3,15 +3,30 @@ PACK_FILE = $(UUID).shell-extension.zip
 SCHEMA_DIR = schemas
 SCHEMA_FILE = $(SCHEMA_DIR)/org.gnome.shell.extensions.liswitch.gschema.xml
 
-.PHONY: all schemas pack install uninstall enable disable logs nested test unit-test lint check clean
+.PHONY: all schemas translations pot pack install uninstall enable disable logs nested test unit-test lint check clean
 
 all: pack
 
 schemas: $(SCHEMA_FILE)
 	glib-compile-schemas $(SCHEMA_DIR)/
 
-pack: schemas
+pot:
+	xgettext --from-code=UTF-8 --output=po/liswitch.pot \
+		--package-name=liswitch --package-version=51.0 \
+		--msgid-bugs-address=https://github.com/liswitch/liswitch/issues \
+		--keyword=_ --keyword=C_:1c,2 --keyword=N_ \
+		extension.js prefs.js indicator.js hotkeys.js windowMemory.js osd.js textCorrection.js \
+		src/*.js
+
+translations:
+	@mkdir -p locale/ru/LC_MESSAGES locale/kk/LC_MESSAGES
+	msgfmt --check -o locale/ru/LC_MESSAGES/liswitch.mo po/ru.po
+	msgfmt --check -o locale/kk/LC_MESSAGES/liswitch.mo po/kk.po
+
+pack: schemas translations
 	gnome-extensions pack --force \
+		--podir=po \
+		--gettext-domain=liswitch \
 		--extra-source=stylesheet.css \
 		--extra-source=LICENSE \
 		--extra-source=indicator.js \
@@ -56,6 +71,9 @@ unit-test:
 	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 gjs -m tests/test-osd.js
 	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/gnome-shell/girepository-1.0:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 gjs -m tests/test-prefs.js
 	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 XDG_RUNTIME_DIR=/tmp gjs -m tests/test-text-correction.js
+	XDG_RUNTIME_DIR=/tmp gjs -m tests/test-performance.js
+	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 XDG_RUNTIME_DIR=/tmp gjs -m tests/test-stress-100-cycles.js
+	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 XDG_RUNTIME_DIR=/tmp gjs -m tests/test-resilience.js
 
 test: pack unit-test
 	@echo "==> Running smoke test via gnome-shell-test-tool (if DBus session bus is available)..."
@@ -99,10 +117,13 @@ lint: schemas
 		node --check tests/test-osd.js ; \
 		node --check tests/test-prefs.js ; \
 		node --check tests/test-text-correction.js ; \
+		node --check tests/test-performance.js ; \
+		node --check tests/test-stress-100-cycles.js ; \
+		node --check tests/test-resilience.js ; \
 		echo "Syntax check OK"; \
 	fi
 
 check: lint
 
 clean:
-	rm -f $(PACK_FILE) $(UUID).zip $(SCHEMA_DIR)/gschemas.compiled
+	rm -rf $(PACK_FILE) $(UUID).zip $(SCHEMA_DIR)/gschemas.compiled locale

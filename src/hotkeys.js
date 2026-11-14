@@ -407,9 +407,11 @@ export function restoreAllSystemShortcuts(settings, {getSettings = null} = {}) {
             }
         }
 
-        settings.set_string('backup-system-shortcuts', '{}');
-        settings.set_strv('backup-system-switch-keys', []);
-        settings.set_strv('backup-system-switch-backward-keys', []);
+        if (Object.keys(backupMap).length > 0) {
+            settings.set_string('backup-system-shortcuts', '{}');
+            settings.set_strv('backup-system-switch-keys', []);
+            settings.set_strv('backup-system-switch-backward-keys', []);
+        }
     } catch (e) {
         Log.warn('HotkeyManager: error in restoreAllSystemShortcuts:', e.message);
     }

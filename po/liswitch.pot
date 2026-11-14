@@ -1,0 +1,453 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the liswitch package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: liswitch 51.0\n"
+"Report-Msgid-Bugs-To: https://github.com/liswitch/liswitch/issues\n"
+"POT-Creation-Date: 2026-11-14 21:22+0500\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: prefs.js:44 prefs.js:402 prefs.js:530 prefs.js:683
+msgid "Disabled"
+msgstr ""
+
+#: prefs.js:68
+msgid "General"
+msgstr ""
+
+#: prefs.js:76
+msgid "Panel Indicator"
+msgstr ""
+
+#: prefs.js:77
+msgid "Configure the layout indicator in the top panel"
+msgstr ""
+
+#: prefs.js:82
+msgid "Show Indicator"
+msgstr ""
+
+#: prefs.js:83
+msgid "Display the keyboard layout indicator in the top panel"
+msgstr ""
+
+#: prefs.js:94
+msgid "Hide System Indicator"
+msgstr ""
+
+#: prefs.js:95
+msgid "Hide standard GNOME keyboard indicator to prevent duplicates"
+msgstr ""
+
+#: prefs.js:106
+msgid "Scroll to Switch Layout"
+msgstr ""
+
+#: prefs.js:107
+msgid "Switch layouts by scrolling the mouse wheel over the indicator"
+msgstr ""
+
+#: prefs.js:118
+msgid "Short (uppercase, e.g. EN)"
+msgstr ""
+
+#: prefs.js:119
+msgid "Full Name (e.g. English)"
+msgstr ""
+
+#: prefs.js:120
+msgid "Lowercase (e.g. en)"
+msgstr ""
+
+#: prefs.js:125
+msgid "Label Format"
+msgstr ""
+
+#: prefs.js:126
+msgid "Choose how layout names appear in the panel"
+msgstr ""
+
+#: prefs.js:162
+msgid "On-Screen Display (OSD)"
+msgstr ""
+
+#: prefs.js:163
+msgid "Visual notification popup when switching layouts"
+msgstr ""
+
+#: prefs.js:168
+msgid "Show OSD Pop-up"
+msgstr ""
+
+#: prefs.js:169
+msgid "Display a brief centered notification when layout changes"
+msgstr ""
+
+#: prefs.js:183
+msgid "OSD Duration"
+msgstr ""
+
+#: prefs.js:184
+msgid "How long the OSD stays visible (in milliseconds)"
+msgstr ""
+
+#: prefs.js:211
+msgid "Show OSD on Window Restore"
+msgstr ""
+
+#: prefs.js:212
+msgid ""
+"Display notification when layout is restored automatically by window memory"
+msgstr ""
+
+#: prefs.js:240
+msgid "Diagnostics"
+msgstr ""
+
+#: prefs.js:241
+msgid "Options for troubleshooting liswitch"
+msgstr ""
+
+#: prefs.js:246
+msgid "Debug Logging"
+msgstr ""
+
+#: prefs.js:247
+msgid "Output detailed diagnostic messages to the system journal"
+msgstr ""
+
+#: prefs.js:273
+msgid "Shortcuts"
+msgstr ""
+
+#: prefs.js:303
+msgid "Layout Switching Shortcuts"
+msgstr ""
+
+#: prefs.js:304
+msgid "Configure keybindings to switch between configured input sources"
+msgstr ""
+
+#: prefs.js:311
+msgid "Next Layout"
+msgstr ""
+
+#: prefs.js:312
+msgid "Cycle forward through available input sources"
+msgstr ""
+
+#: prefs.js:319
+msgid "Previous Layout"
+msgstr ""
+
+#: prefs.js:320
+msgid "Cycle backward through available input sources"
+msgstr ""
+
+#: prefs.js:326
+msgid "Direct Layout Selection"
+msgstr ""
+
+#: prefs.js:327
+msgid "Jump directly to a specific layout by number (1 to 4)"
+msgstr ""
+
+#: prefs.js:335
+#, javascript-format
+msgid "Switch to Layout %d"
+msgstr ""
+
+#: prefs.js:336
+#, javascript-format
+msgid "Directly activate layout at index %d"
+msgstr ""
+
+#: prefs.js:343
+msgid "Modifier-Only Shortcuts Note"
+msgstr ""
+
+#: prefs.js:345
+msgid ""
+"GNOME Shell keybindings require a non-modifier key (like Space, Letter, or "
+"Digit). Pure modifier combinations (such as Alt+Shift or Caps Lock) cannot "
+"be assigned via extension keybindings; they are managed at the system XKB "
+"level in Settings → Keyboard → Special Character Entry or GNOME Tweaks."
+msgstr ""
+
+#: prefs.js:401
+#, javascript-format
+msgid "Reset to default shortcut (%s)"
+msgstr ""
+
+#: prefs.js:450
+msgid "Press keys…"
+msgstr ""
+
+#: prefs.js:451
+msgid "Press keys now — Escape to cancel, Backspace to disable"
+msgstr ""
+
+#: prefs.js:485
+#, javascript-format
+msgid "Shortcut \"%s\" is already assigned to \"%s\"."
+msgstr ""
+
+#: prefs.js:536
+#, javascript-format
+msgid "Modifier-only shortcut cannot be bound in GNOME Shell: %s"
+msgstr ""
+
+#: prefs.js:543
+#, javascript-format
+msgid "Conflict: shortcut \"%s\" is assigned to %s (%s)"
+msgstr ""
+
+#: prefs.js:550
+msgid "Free in System"
+msgstr ""
+
+#: prefs.js:572
+#, javascript-format
+msgid "Overriding system shortcut: %s (%s)"
+msgstr ""
+
+#: prefs.js:578
+msgid "Restore in System"
+msgstr ""
+
+#: prefs.js:612
+msgid "Memory"
+msgstr ""
+
+#: prefs.js:632
+msgid "System Setting Conflict"
+msgstr ""
+
+#: prefs.js:633
+msgid "Notice regarding GNOME desktop input settings"
+msgstr ""
+
+#: prefs.js:638
+msgid "System \"Per-Window\" Switching Active ⚠️"
+msgstr ""
+
+#: prefs.js:640
+msgid ""
+"GNOME Settings has \"Switch input sources individually for each window\" "
+"enabled. To avoid duplicate switching conflicts, liswitch layout memory is "
+"suspended."
+msgstr ""
+
+#: prefs.js:647
+msgid "Disable in System"
+msgstr ""
+
+#: prefs.js:675
+msgid "Layout Memory Mode"
+msgstr ""
+
+#: prefs.js:676
+msgid "Remember and restore keyboard layout when switching between windows"
+msgstr ""
+
+#: prefs.js:681
+msgid "Per-Application (recommended)"
+msgstr ""
+
+#: prefs.js:682
+msgid "Per-Window"
+msgstr ""
+
+#: prefs.js:687
+msgid "Memory Mode"
+msgstr ""
+
+#: prefs.js:688
+msgid "Choose how layouts are tracked across applications and windows"
+msgstr ""
+
+#: prefs.js:711
+msgid "Keep active layout"
+msgstr ""
+
+#: prefs.js:712
+msgid "Reset to first layout"
+msgstr ""
+
+#: prefs.js:716
+msgid "New Windows Initial Layout"
+msgstr ""
+
+#: prefs.js:717
+msgid "Action when focusing a window that has no saved layout"
+msgstr ""
+
+#: prefs.js:741
+msgid "Excluded Applications"
+msgstr ""
+
+#: prefs.js:742
+msgid "Applications that should be ignored by layout memory"
+msgstr ""
+
+#: prefs.js:747
+msgid "Add application ID (e.g. org.gnome.Console)"
+msgstr ""
+
+#: prefs.js:753
+msgid "Excluded List"
+msgstr ""
+
+#: prefs.js:772
+msgid "No applications excluded"
+msgstr ""
+
+#: prefs.js:776
+#, javascript-format
+msgid "%d application(s) excluded"
+msgstr ""
+
+#: prefs.js:787
+msgid "Remove from excluded list"
+msgstr ""
+
+#: prefs.js:833
+msgid "About"
+msgstr ""
+
+#: prefs.js:864
+msgid "Advanced keyboard layout switcher for GNOME Shell 51"
+msgstr ""
+
+#: prefs.js:871
+#, javascript-format
+msgid "Version %s"
+msgstr ""
+
+#: prefs.js:881
+msgid "Information"
+msgstr ""
+
+#: prefs.js:886
+msgid "Developer"
+msgstr ""
+
+#: prefs.js:892
+msgid "License"
+msgstr ""
+
+#: prefs.js:898
+msgid "Platform"
+msgstr ""
+
+#: prefs.js:905
+msgid "Links & Support"
+msgstr ""
+
+#: prefs.js:910
+msgid "Source Code"
+msgstr ""
+
+#: prefs.js:917
+msgid "Open project repository"
+msgstr ""
+
+#: prefs.js:944
+msgid "Correction"
+msgstr ""
+
+#: prefs.js:952
+msgid "Security & Privacy"
+msgstr ""
+
+#: prefs.js:957
+msgid "In-Memory Keystroke Buffer Notice"
+msgstr ""
+
+#: prefs.js:958
+msgid ""
+"When enabled, the extension maintains a temporary buffer of recent "
+"keystrokes (up to 64 chars) strictly in memory to convert text typed in the "
+"wrong layout (e.g. \"ghbdtn\" → \"привет\"). The buffer is automatically "
+"cleared on window focus changes, Enter, Tab, Esc, any modifier, or after 3 "
+"seconds of inactivity. Keystrokes are NEVER written to disk or logs.\n"
+"\n"
+"⚠️ Important: Wayland protocol isolates application surfaces. Extensions "
+"cannot detect password fields inside web browsers or third-party apps. Do "
+"not use this feature when entering sensitive passwords."
+msgstr ""
+
+#: prefs.js:964
+msgid "Configuration"
+msgstr ""
+
+#: prefs.js:969
+msgid "Enable Text Correction"
+msgstr ""
+
+#: prefs.js:970
+msgid "Convert text typed in the wrong layout into the alternate language"
+msgstr ""
+
+#: prefs.js:981
+msgid "Double Left Shift Trigger"
+msgstr ""
+
+#: prefs.js:982
+msgid "Press Left Shift twice quickly to convert the last typed word"
+msgstr ""
+
+#: prefs.js:994
+msgid "Manual Hotkey"
+msgstr ""
+
+#: prefs.js:995
+msgid "Keyboard shortcut to manually trigger text conversion"
+msgstr ""
+
+#: prefs.js:1004
+msgid "Convert Last Word"
+msgstr ""
+
+#: prefs.js:1005
+msgid "Shortcut to trigger conversion of the most recently typed word"
+msgstr ""
+
+#: prefs.js:1013
+msgid "Reset to default shortcut (<Shift>Pause)"
+msgstr ""
+
+#: prefs.js:1062
+msgid "Press keys… (Esc: cancel, Backspace: disable)"
+msgstr ""
+
+#: src/indicator.js:77
+msgid "Keyboard layout: none configured"
+msgstr ""
+
+#: src/indicator.js:80 src/indicator.js:81
+#, javascript-format
+msgid "Keyboard layout: %s"
+msgstr ""
+
+#: src/indicator.js:100
+msgid "Keyboard Layout Indicator"
+msgstr ""
+
+#: src/indicator.js:221
+msgid "No layouts configured"
+msgstr ""
+
+#: src/indicator.js:254
+msgid "Settings…"
+msgstr ""
