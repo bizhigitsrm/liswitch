@@ -15,6 +15,7 @@ pack: schemas
 		--extra-source=stylesheet.css \
 		--extra-source=LICENSE \
 		--extra-source=indicator.js \
+		--extra-source=hotkeys.js \
 		--extra-source=src \
 		--out-dir=. \
 		.
@@ -47,6 +48,7 @@ unit-test:
 	@echo "==> Running pure-GJS unit tests..."
 	gjs -m tests/test-input-source-service.js
 	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 gjs -m tests/test-indicator.js
+	XDG_RUNTIME_DIR=/tmp gjs -m tests/test-hotkeys.js
 
 test: pack unit-test
 	@echo "==> Running smoke test via gnome-shell-test-tool (if DBus session bus is available)..."
@@ -67,12 +69,16 @@ lint: schemas
 		node --check extension.js ; \
 		node --check prefs.js ; \
 		node --check indicator.js ; \
+		node --check hotkeys.js ; \
 		node --check src/log.js ; \
 		node --check src/inputSourceService.js ; \
 		node --check src/indicator.js ; \
+		node --check src/hotkeys.js ; \
+		node --check src/hotkeyManager.js ; \
 		node --check tests/smoke-test.js ; \
 		node --check tests/test-input-source-service.js ; \
 		node --check tests/test-indicator.js ; \
+		node --check tests/test-hotkeys.js ; \
 		echo "Syntax check OK"; \
 	fi
 

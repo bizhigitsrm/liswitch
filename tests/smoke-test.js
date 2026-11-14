@@ -36,8 +36,34 @@ export async function run() {
     if (!indicator)
         throw new Error('indicator is not initialized on extension!');
 
+    const hotkeyManager = extObj.hotkeyManager;
+    if (!hotkeyManager)
+        throw new Error('hotkeyManager is not initialized on extension!');
+
     console.log(`[TEST] inputSourceService available: ${service.isAvailable}, sources: ${service.getSources().length}, current: ${service.getCurrentIndex()}`);
     console.log(`[TEST] indicator label: "${indicator.label?.text ?? ''}", statusArea registered: ${Boolean(Main.panel.statusArea[uuid])}`);
+    console.log(`[TEST] hotkeyManager bound hotkeys: ${Array.from(hotkeyManager.boundHotkeys).join(', ')}`);
+
+    // Verify default hotkeys are bound in window manager
+    if (!hotkeyManager.boundHotkeys.has('hotkey-next'))
+        throw new Error('hotkey-next is not registered in hotkeyManager!');
+    if (!hotkeyManager.boundHotkeys.has('hotkey-previous'))
+        throw new Error('hotkey-previous is not registered in hotkeyManager!');
+
+    // Test dynamic GSettings update without restart
+    const extSettings = extObj._settings;
+    if (extSettings) {
+        extSettings.set_strv('hotkey-switch-1', ['<Control><Alt>1']);
+        if (!hotkeyManager.boundHotkeys.has('hotkey-switch-1'))
+            throw new Error('hotkey-switch-1 was not dynamically registered after GSettings change!');
+        console.log('[TEST] Dynamic GSettings update verified: hotkey-switch-1 registered live');
+
+        // Reset it back
+        extSettings.set_strv('hotkey-switch-1', []);
+        if (hotkeyManager.boundHotkeys.has('hotkey-switch-1'))
+            throw new Error('hotkey-switch-1 was not dynamically unregistered after GSettings reset!');
+        console.log('[TEST] Dynamic GSettings unbind verified: hotkey-switch-1 removed live');
+    }
 
     // Test basic operations in headless session
     if (service.isAvailable && service.getSources().length > 1) {
@@ -67,6 +93,12 @@ export async function run() {
 
         if (!ext.stateObj?.indicator)
             throw new Error(`Iteration ${i}: indicator missing after re-enable`);
+
+        if (!ext.stateObj?.hotkeyManager)
+            throw new Error(`Iteration ${i}: hotkeyManager missing after re-enable`);
+
+        if (!ext.stateObj?.hotkeyManager.boundHotkeys.has('hotkey-next'))
+            throw new Error(`Iteration ${i}: hotkey-next missing after re-enable`);
 
         if (!Main.panel.statusArea[uuid])
             throw new Error(`Iteration ${i}: Status area indicator not registered after re-enable`);

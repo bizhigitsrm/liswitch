@@ -5,6 +5,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {InputSourceService} from './src/inputSourceService.js';
 import {Indicator} from './src/indicator.js';
+import {HotkeyManager} from './src/hotkeys.js';
 import * as Log from './src/log.js';
 
 export default class LiswitchExtension extends Extension {
@@ -24,6 +25,9 @@ export default class LiswitchExtension extends Extension {
         } else {
             Log.warn('InputSourceService is unavailable (no input sources configured or manager unavailable)');
         }
+
+        this._hotkeyManager = new HotkeyManager(this._settings, this._inputSourceService);
+        this._hotkeyManager.enable();
 
         this._indicator = null;
         this._syncIndicator();
@@ -76,6 +80,11 @@ export default class LiswitchExtension extends Extension {
             this._indicator = null;
         }
 
+        if (this._hotkeyManager) {
+            this._hotkeyManager.destroy();
+            this._hotkeyManager = null;
+        }
+
         if (this._inputSourceService) {
             this._inputSourceService.destroy();
             this._inputSourceService = null;
@@ -101,5 +110,14 @@ export default class LiswitchExtension extends Extension {
      */
     get indicator() {
         return this._indicator;
+    }
+
+    /**
+     * Public accessor for the hotkey manager (accessible from Looking Glass or test harness)
+     *
+     * @returns {HotkeyManager|null}
+     */
+    get hotkeyManager() {
+        return this._hotkeyManager;
     }
 }

@@ -33,5 +33,61 @@
       <description>Whether scrolling the mouse wheel over the indicator switches to next/previous layout.</description>
     </key>
 
+    <!-- === Горячие клавиши === -->
+    <key name="hotkey-next" type="as">
+      <default><![CDATA[['<Control><Alt>space']]]></default>
+      <summary>Switch to next input source</summary>
+      <description>Keybinding to activate the next configured input source cyclically.</description>
+    </key>
+
+    <key name="hotkey-previous" type="as">
+      <default><![CDATA[['<Control><Alt><Shift>space']]]></default>
+      <summary>Switch to previous input source</summary>
+      <description>Keybinding to activate the previous configured input source cyclically.</description>
+    </key>
+
+    <key name="hotkey-switch-1" type="as">
+      <default>[]</default>
+      <summary>Direct switch to input source 1</summary>
+      <description>Keybinding to directly activate the 1st configured layout (index 0).</description>
+    </key>
+
+    <key name="hotkey-switch-2" type="as">
+      <default>[]</default>
+      <summary>Direct switch to input source 2</summary>
+      <description>Keybinding to directly activate the 2nd configured layout (index 1).</description>
+    </key>
+
+    <key name="hotkey-switch-3" type="as">
+      <default>[]</default>
+      <summary>Direct switch to input source 3</summary>
+      <description>Keybinding to directly activate the 3rd configured layout (index 2).</description>
+    </key>
+
+    <key name="hotkey-switch-4" type="as">
+      <default>[]</default>
+      <summary>Direct switch to input source 4</summary>
+      <description>Keybinding to directly activate the 4th configured layout (index 3).</description>
+    </key>
+
+    <!-- === Резервные копии освобождённых системных клавиш === -->
+    <key name="backup-system-shortcuts" type="s">
+      <default>"{}"</default>
+      <summary>Backup map of freed system shortcuts</summary>
+      <description>JSON-encoded dictionary of original system keybindings modified by user action.</description>
+    </key>
+
+    <key name="backup-system-switch-keys" type="as">
+      <default>[]</default>
+      <summary>Backup of system switch-input-source</summary>
+      <description>Saved original values of switch-input-source for rollback upon extension disable.</description>
+    </key>
+
+    <key name="backup-system-switch-backward-keys" type="as">
+      <default>[]</default>
+      <summary>Backup of system switch-input-source-backward</summary>
+      <description>Saved original values of switch-input-source-backward for rollback upon extension disable.</description>
+    </key>
+
   </schema>
 </schemalist>
