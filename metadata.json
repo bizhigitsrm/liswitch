@@ -1,0 +1,15 @@
+{
+  "name": "Liswitch",
+  "description": "Advanced keyboard layout and input source switcher for GNOME Shell",
+  "uuid": "liswitch@local",
+  "shell-version": [
+    "51"
+  ],
+  "version-name": "0.1.0",
+  "url": "https://github.com/example/liswitch",
+  "gettext-domain": "liswitch",
+  "settings-schema": "org.gnome.shell.extensions.liswitch",
+  "session-modes": [
+    "user"
+  ]
+}

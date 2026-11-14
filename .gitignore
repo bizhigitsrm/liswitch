@@ -1,0 +1,27 @@
+# GNOME Shell extension packages
+*.zip
+*.shell-extension.zip
+
+# Compiled schemas
+schemas/gschemas.compiled
+
+# Temporary files and logs
+/tmp/
+*.log
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.directory
+
+# Node / npm
+node_modules/
+package-lock.json
+npm-debug.log*
+
+# OS artifacts
+.DS_Store
+Thumbs.db

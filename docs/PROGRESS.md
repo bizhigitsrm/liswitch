@@ -78,3 +78,63 @@
 - `docs/spec.md` — функциональная спецификация расширения (создан).
 - `docs/architecture.md` — архитектурное руководство, схема GSettings, диаграммы жизненного цикла (создан).
 - `docs/PROGRESS.md` — актуализирован журнал разработки проекта.
+
+---
+
+## Этап 3. Каркас проекта и среда разработки
+
+- **Дата выполнения**: 2026-11-14
+- **Статус**: Выполнен
+
+### Что сделано
+1. Создан манифест расширения `metadata.json` с поддержкой GNOME Shell 51, UUID `liswitch@local`, схемой GSettings `org.gnome.shell.extensions.liswitch`, gettext-доменом `liswitch` и режимом сессии `["user"]`.
+2. Создан базовый модуль расширения `extension.js` с классом `LiswitchExtension extends Extension`:
+   - Строго синхронные методы `enable()` и `disable()`.
+   - Инициализация `this._settings = this.getSettings()` в `enable()` и гарантированное обнуление ссылки `this._settings = null` в `disable()`.
+   - Логирование факта включения/отключения с версией из метаданных.
+   - Полный отказ от устаревшего `imports.*`, строгие стандартные ES-модули.
+3. Создана минимальная схема GSettings `schemas/org.gnome.shell.extensions.liswitch.gschema.xml` с путем `/org/gnome/shell/extensions/liswitch/` и ключом `debug` (boolean, default: false).
+4. Создан модуль параметров `prefs.js` с классом `LiswitchPreferences extends ExtensionPreferences` на базе Libadwaita (`Adw.PreferencesPage`, `Adw.PreferencesGroup`, `Adw.SwitchRow`) с двухсторонней привязкой флага `debug` через `Gio.SettingsBindFlags.DEFAULT`.
+5. Создан файл стилей `stylesheet.css`.
+6. Разработан `Makefile` с целями `schemas`, `pack`, `install`, `uninstall`, `enable`, `disable`, `logs`, `nested`, `lint`, `clean`.
+7. Сконфигурировано окружение разработки:
+   - Конфигурации ESLint: современный плоский конфиг `eslint.config.js` и совместимый `.eslintrc.json`, настроенные под GJS/GNOME Shell (глобалы `global`, `globalThis`, `_`, `C_`, `N_`, `log`, ES2022, без глобалов Node.js/браузера).
+   - `.editorconfig` (стандарты отступов 4 пробела для JS, 2 для JSON/XML, табы для Makefile).
+   - `.gitignore` (исключение архивов `.zip`, `.shell-extension.zip`, скомпилированных схем, временных файлов).
+   - `README.md` с кратким описанием и инструкциями по сборке/запуску.
+   - `LICENSE` с текстом GPL-2.0-or-later.
+8. Разработан скрипт `scripts/dev-run.sh` для быстрого цикла разработки: сборка схем, проверка линтером, упаковка, установка и проверка расширения.
+9. Проверена валидация схемы через `glib-compile-schemas --strict --dry-run schemas/` и работа `make lint`, `make pack`. Проверена целостность и состав формируемого пакета расширения.
+10. Разработан автоматизированный тест `tests/smoke-test.js` для `gnome-shell-test-tool --headless` с проверкой регистрации расширения и 10 циклов `disable`/`enable`. В `Makefile` добавлена цель `test`.
+
+### Принятые решения и обоснования
+1. **Поддержка двух форматов ESLint (`eslint.config.js` и `.eslintrc.json`)**: плоский конфиг является стандартным для ESLint 9+, а `.eslintrc.json` гарантирует совместимость со старыми версиями инструментария и внешними IDE.
+2. **Включение `stylesheet.css` и `LICENSE` в архив пакета**: передача через флаги `--extra-source` в `gnome-extensions pack` обеспечивает соответствие правилам дистрибуции extensions.gnome.org (наличие файла лицензии и таблицы стилей).
+3. **Двусторонняя привязка через GSettings в `prefs.js`**: использование `settings.bind()` для `Adw.SwitchRow` гарантирует автоматическую синхронизацию UI настроек без ручных слушателей сигналов.
+4. **Фолбэк проверки синтаксиса в `make lint`**: при отсутствии глобального бинарника `eslint` линтер автоматически запускает строгую проверку синтаксиса ES-модулей через `node --check`, гарантируя обнаружение синтаксических ошибок на этапе сборки.
+5. **Лицензия GPL-2.0-or-later**: выбрана стандартная лицензия экосистемы GNOME Shell, совместимая с правилами публикации на extensions.gnome.org.
+6. **Отказ от `dbus-run-session gnome-shell --wayland --no-x11` для вложенного тестирования**: подтверждено практическим запуском в GNOME 51, что Mutter не имеет вложенного Wayland-клиента и завершается ошибкой `EBUSY` при попытке захвата DRM-устройств через `systemd-logind`. Изолированное тестирование расширения переведено на официальный headless-раннер `gnome-shell-test-tool`.
+7. **Инструкции по первичному обнаружению расширения в Wayland**: задокументировано, что GNOME Shell сканирует `~/.local/share/gnome-shell/extensions` только при старте. При первой установке из CLI требуется перезаход в сессию (relogin) или однократная загрузка через Looking Glass (`Main.extensionManager.loadExtension(...)`).
+
+### Оставшиеся VERIFY и риски
+1. `// VERIFY:` Интерактивное тестирование нового композитора в GNOME 51 возможно только на отдельном виртуальном терминале (TTY3), так как запуск второго экземпляра GNOME Shell на том же месте блокируется logind (конфликт DRM-устройств).
+
+### Созданные и изменённые файлы
+- `metadata.json` — манифест расширения (создан).
+- `extension.js` — точка входа расширения (создан).
+- `prefs.js` — окно настроек Libadwaita (создан).
+- `stylesheet.css` — таблица стилей (создан).
+- `schemas/org.gnome.shell.extensions.liswitch.gschema.xml` — схема GSettings (создан).
+- `tests/smoke-test.js` — тест для headless-валидации через gnome-shell-test-tool (создан).
+- `Makefile` — сценарии сборки, валидации и управления расширением (создан).
+- `eslint.config.js` — плоская конфигурация ESLint для GJS (создан).
+- `.eslintrc.json` — классическая конфигурация ESLint для GJS (создан).
+- `.editorconfig` — конфигурация форматирования (создан).
+- `.gitignore` — игнорируемые артефакты (создан).
+- `README.md` — документация проекта (создан).
+- `LICENSE` — текст лицензии GPL-2.0-or-later (создан).
+- `scripts/dev-run.sh` — скрипт сборки и проверки расширения (создан).
+- `docs/api-notes.md` — дополнен справочник фактами о Mutter 51 и Wayland (изменён).
+- `docs/PROGRESS.md` — актуализирован журнал разработки.
+
+

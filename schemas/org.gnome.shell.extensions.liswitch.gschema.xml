@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="liswitch">
+  <schema id="org.gnome.shell.extensions.liswitch" path="/org/gnome/shell/extensions/liswitch/">
+
+    <key name="debug" type="b">
+      <default>false</default>
+      <summary>Enable debug logging</summary>
+      <description>Whether to print verbose debug messages to the system log.</description>
+    </key>
+
+  </schema>
+</schemalist>

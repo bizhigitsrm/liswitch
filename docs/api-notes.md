@@ -195,16 +195,16 @@ Main.wm.removeKeybinding('my-shortcut-key');
 
 ## 7. Тестовое окружение GNOME 51
 
-### 7.1. Вложенная сессия (Nested Wayland)
-В GNOME Shell 51 флаг `--nested` отсутствует, так как вложенный режим является стандартным при запуске внутри существующей сессии Wayland без флага `--display-server`:
-```bash
-# Запуск вложенного Shell для тестирования
-dbus-run-session gnome-shell --wayland --no-x11
-```
-Также доступен режим комплекта разработки:
-```bash
-gnome-shell --wayland --devkit
-```
+### 7.1. Ограничения вложенной сессии (Nested Wayland) и запуск на TTY
+В GNOME 50/51 при удалении X11 бэкенда в Mutter был также удалён вложенный X11-клиент. В Mutter 51 скомпилирован исключительно нативный бэкенд (`MetaBackendNative`), работающий либо в режиме DRM/KMS, либо в режиме headless.
+Поэтому попытка запустить второй экземпляр GNOME Shell (`dbus-run-session gnome-shell --wayland --no-x11`) внутри существующей графической сессии завершается ошибкой:
+`Failed to take control of the session: GDBus.Error:System.Error.EBUSY: Device or resource busy`
+так как Mutter пытается захватить DRM master через `systemd-logind`.
+- **Способы тестирования**:
+  1. **Изолированный headless-тест**: использовать `gnome-shell-test-tool --headless --extension <zip> tests/smoke-test.js`.
+  2. **Интерактивная сессия**: переключиться на отдельный виртуальный терминал (например, `Ctrl+Alt+F3`), залогиниться и запустить `dbus-run-session gnome-shell --wayland --no-x11`.
+  3. **Тестирование в виртуальной машине** (GNOME Boxes / QEMU).
+
 
 ### 7.2. Автоматизированное тестирование через `gnome-shell-test-tool`
 В GNOME 51 утилита `gnome-shell-test-tool` поддерживает опцию `--extension`:
@@ -264,6 +264,11 @@ gnome-extensions info liswitch@local
    В момент открытия Overview, нажатия на рабочий стол или отображения системных модальных окон фокус окна сбрасывается в `null`. Код обязан проверять наличие окна перед обращением к его свойствам.
 10. **Ограничения `Shell.ActionMode` при модальных окнах**:
     Если сочетание клавиш зарегистрировано с `Shell.ActionMode.NORMAL`, оно не сработает в Overview, в режиме блокировки экрана или при открытом меню. Для переключателя раскладки требуется явно указывать комбинацию режимов (например, `Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW | Shell.ActionMode.POPUP`).
+11. **Первичное обнаружение расширений в `~/.local/share/gnome-shell/extensions` на Wayland**:
+    GNOME Shell сканирует каталоги расширений (`collectFromDatadirs`) только один раз — при старте сессии. Утилита `gnome-extensions install` просто распаковывает zip в целевой каталог, но не уведомляет запущенный Shell (метод `ReloadExtension` в DBus депрекейтнут и возвращает `NOT_SUPPORTED`). В результате свежеустановленное локальное расширение возвращает `Extension doesn't exist` до тех пор, пока пользователь не перезайдёт в сессию (relogin), либо пока расширение не будет загружено в рантайм через Looking Glass (`Main.extensionManager.loadExtension(...)`).
+12. **Конфликт DRM при попытке запуска вложенного Shell в GNOME 51**:
+    В Mutter 51 отсутствует вложенный Wayland-клиент. Команда `gnome-shell --wayland` запускает `MetaBackendNative` в режиме DRM/KMS и пытается вызвать `TakeControl()` у `systemd-logind`. Если сессия уже запущена, logind возвращает ошибку `EBUSY: Device or resource busy`. Для тестирования следует использовать headless-раннер `gnome-shell-test-tool` либо отдельный TTY (VT3).
+
 
 ---
 
