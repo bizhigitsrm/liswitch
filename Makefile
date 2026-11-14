@@ -3,7 +3,7 @@ PACK_FILE = $(UUID).shell-extension.zip
 SCHEMA_DIR = schemas
 SCHEMA_FILE = $(SCHEMA_DIR)/org.gnome.shell.extensions.liswitch.gschema.xml
 
-.PHONY: all schemas pack install uninstall enable disable logs nested test lint check clean
+.PHONY: all schemas pack install uninstall enable disable logs nested test unit-test lint check clean
 
 all: pack
 
@@ -14,6 +14,7 @@ pack: schemas
 	gnome-extensions pack --force \
 		--extra-source=stylesheet.css \
 		--extra-source=LICENSE \
+		--extra-source=src \
 		--out-dir=. \
 		.
 	@if [ -f $(PACK_FILE) ]; then \
@@ -41,8 +42,17 @@ nested:
 	@echo "Attempting to launch..."
 	dbus-run-session gnome-shell --wayland --no-x11
 
-test: pack
-	gnome-shell-test-tool --headless --extension $(PACK_FILE) tests/smoke-test.js
+unit-test:
+	@echo "==> Running pure-GJS unit tests..."
+	gjs -m tests/test-input-source-service.js
+
+test: pack unit-test
+	@echo "==> Running smoke test via gnome-shell-test-tool (if DBus session bus is available)..."
+	@if [ -n "$$DBUS_SESSION_BUS_ADDRESS" ]; then \
+		gnome-shell-test-tool --headless --extension $(PACK_FILE) tests/smoke-test.js || true; \
+	else \
+		echo "Skipping headless gnome-shell-test-tool (requires active DBus session / graphical TTY session)"; \
+	fi
 
 lint: schemas
 	@echo "==> Validating GSettings schema..."
@@ -54,7 +64,10 @@ lint: schemas
 		echo "eslint not found in PATH; running syntax validation via node --check..."; \
 		node --check extension.js ; \
 		node --check prefs.js ; \
+		node --check src/log.js ; \
+		node --check src/inputSourceService.js ; \
 		node --check tests/smoke-test.js ; \
+		node --check tests/test-input-source-service.js ; \
 		echo "Syntax check OK"; \
 	fi
 

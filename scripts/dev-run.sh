@@ -20,10 +20,14 @@ glib-compile-schemas schemas/
 echo "==> 2. Validating with linter..."
 make lint
 
+echo "==> 2.1 Running pure GJS unit tests..."
+make unit-test
+
 echo "==> 3. Packaging extension..."
 gnome-extensions pack --force \
     --extra-source=stylesheet.css \
     --extra-source=LICENSE \
+    --extra-source=src \
     --out-dir="${ROOT_DIR}" \
     "${ROOT_DIR}"
 

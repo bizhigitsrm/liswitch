@@ -23,9 +23,29 @@ export async function run() {
         console.log(`[TEST] Enabled successfully, state: ${ext.state}`);
     }
 
-    // Perform 10 enable/disable cycles to verify leak-free and error-free transitions
-    console.log('[TEST] Performing 10 enable/disable cycles...');
-    for (let i = 1; i <= 10; i++) {
+    // Verify InputSourceService is accessible on stateObj
+    const extObj = ext.stateObj;
+    if (!extObj)
+        throw new Error('Extension stateObj is null!');
+
+    const service = extObj.inputSourceService;
+    if (!service)
+        throw new Error('inputSourceService is not initialized on extension!');
+
+    console.log(`[TEST] inputSourceService available: ${service.isAvailable}, sources: ${service.getSources().length}, current: ${service.getCurrentIndex()}`);
+
+    // Test basic operations in headless session
+    if (service.isAvailable && service.getSources().length > 1) {
+        const curBefore = service.getCurrentIndex();
+        service.next();
+        console.log(`[TEST] next() switched index: ${curBefore} -> ${service.getCurrentIndex()}`);
+        service.previous();
+        console.log(`[TEST] previous() restored index: ${service.getCurrentIndex()}`);
+    }
+
+    // Perform 20 enable/disable cycles to verify leak-free and error-free transitions
+    console.log('[TEST] Performing 20 enable/disable cycles...');
+    for (let i = 1; i <= 20; i++) {
         Main.extensionManager.disableExtension(uuid);
         if (ext.state === 1)
             throw new Error(`Iteration ${i}: Failed to disable extension`);
@@ -33,7 +53,10 @@ export async function run() {
         Main.extensionManager.enableExtension(uuid);
         if (ext.state !== 1)
             throw new Error(`Iteration ${i}: Failed to enable extension`);
+
+        if (!ext.stateObj?.inputSourceService)
+            throw new Error(`Iteration ${i}: inputSourceService missing after re-enable`);
     }
 
-    console.log('[TEST] All 10 enable/disable cycles completed successfully without errors!');
+    console.log('[TEST] All 20 enable/disable cycles completed successfully without errors!');
 }

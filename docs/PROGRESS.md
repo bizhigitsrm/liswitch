@@ -137,4 +137,67 @@
 - `docs/api-notes.md` — дополнен справочник фактами о Mutter 51 и Wayland (изменён).
 - `docs/PROGRESS.md` — актуализирован журнал разработки.
 
+---
+
+## Этап 4. Сервис работы с раскладками (`src/inputSourceService.js`)
+
+- **Дата выполнения**: 2026-11-14
+- **Статус**: Выполнен
+
+### Что сделано
+1. Создан единый хелпер логирования `src/log.js` с функциями `initLogger()`, `resetLogger()`, `debug()`, `info()`, `warn()`, `error()`. Логирование `debug` выводится в системный журнал только при активном ключе GSettings `debug` (или явном переопределении для тестов через `setDebugOverride`).
+2. Разработан сервис работы с раскладками `src/inputSourceService.js` с классом `InputSourceService`:
+   - Наследование от `GObject.Object` со строгой типизацией сигналов: `sources-changed` и `current-changed(index: GObject.TYPE_INT)`.
+   - Легковесный `constructor(settings)` без тяжёлых операций.
+   - Метод `enable({manager = null})`: подключение к сигналам Shell `sources-changed` и `current-source-changed`, получение менеджера через `getInputSourceManager()` (или мока), синхронизация списка раскладок и текущего индекса.
+   - Метод `destroy()`: строго синхронное отключение всех слушателей сигналов, очистка кэшей, сброс ссылок, идемпотентность при повторных вызовах.
+   - Метод `getSources()`: возвращает нормализованный массив объектов `{index, id, shortName, displayName}`.
+   - Метод `getCurrentIndex()`: возвращает целочисленный индекс активной раскладки (0..N) или `-1`, если сервис недоступен.
+   - Метод `activate(index, interactive = true)`: переключение раскладки с валидацией индекса; при невалидном индексе безопасно игнорирует команду и пишет предупреждение в журнал, если включён `debug`.
+   - Методы `next()` и `previous()`: циклическое переключение раскладок по кругу с учётом позиции в массиве доступных источников.
+   - Геттеры `isAvailable` (boolean) и `state` (`'available'` | `'unavailable'`).
+   - Безопасная обработка граничных случаев: при недоступности менеджера или пустом списке источников сервис переходит в `unavailable`, возвращает пустой список раскладок и `-1`, а расширение не падает.
+3. Разработан запасной путь `FallbackBackend` на базе схемы `org.gnome.desktop.input-sources`:
+   - Активируется исключительно при недоступности `InputSourceManager` (например, в standalone CLI-окружении или при сбое инициализации клавиатурной подсистемы Shell).
+   - Читает `sources` и `current` из GSettings, отслеживает сигналы `changed::sources` и `changed::current`.
+   - В комментариях к классу задокументировано, почему в GNOME Shell 50/51 на Wayland системный ключ `current` устарел и игнорируется Mutter, и почему запись в него не переключает активную раскладку в сессии.
+4. В комментариях к классу подробно описаны используемые внутренние поля Shell (`InputSourceManager`, `InputSource`, словарь `inputSources`, порядок `_mruSources`, нормализация `shortName`).
+5. Обновлена точка входа расширения `extension.js`:
+   - Интегрированы `InputSourceService` и `log.js`.
+   - В `enable()` создаётся и включается сервис раскладок.
+   - В `disable()` сервис синхронно уничтожается (`destroy()`) и обнуляется ссылка.
+   - Добавлен публичный геттер `inputSourceService` для удобного доступа из Looking Glass (`Alt+F2` -> `lg`) и тестов.
+6. В `Makefile` и `scripts/dev-run.sh` добавлен флаг `--extra-source=src` для команды `gnome-extensions pack`, гарантирующий включение файлов `src/inputSourceService.js` и `src/log.js` в архив расширения.
+7. Создан модульный автоматический тест `tests/test-input-source-service.js` для чистого GJS (`gjs -m tests/test-input-source-service.js`), проверяющий:
+   - Инициализацию и контракт `getSources()` ({index, id, shortName, displayName}).
+   - `activate(index)` с валидными индексами и генерацию `current-changed`.
+   - Циклическое переключение `next()` и `previous()`.
+   - Безопасную обработку невалидных индексов и логирование `debug`.
+   - Динамическое удаление и добавление раскладок по сигналу `sources-changed`, переход в `unavailable` при пустом списке.
+   - 20 циклов `enable()`/`destroy()` без утечек сигнатур и дублирования обработчиков.
+   - Работу `FallbackBackend` с GSettings.
+8. В `Makefile` добавлена цель `unit-test`, а в `lint` включена проверка синтаксиса модулей `src/`.
+9. Обновлён сценарий `tests/smoke-test.js` для `gnome-shell-test-tool`: расширен до 20 циклов `enable/disable` с валидацией наличия и работоспособности `inputSourceService`.
+
+### Принятые решения и обоснования
+1. **Базовый класс `GObject.Object` для `InputSourceService`**: в отличие от чисто шелловского `Signals.EventEmitter`, GObject обеспечивает строгую типизацию параметров сигналов (`GObject.TYPE_INT`), полную поддержку механизма `connectObject` в GNOME Shell и позволяет запускать юнит-тесты в чистом GJS (`gjs -m`) без загрузки композитора Mutter.
+2. **Динамический импорт `keyboard.js` в блоке try/catch**: `await import('resource:///org/gnome/shell/ui/status/keyboard.js')` позволяет модулю прозрачно работать как в контексте живого GNOME Shell (подключая системный синглтон `getInputSourceManager()`), так и в изолированных юнит-тестах с моком менеджера.
+3. **Циклическое переключение по позициям массива (`findIndex`)**: при наличии нестандартных индексов раскладок (например, пропуски или пользовательские ID) переключение по позиции `(pos ± 1 + count) % count` гарантирует надёжный цикл без застреваний.
+4. **Включение каталога `src` через `--extra-source=src`**: утилита `gnome-extensions pack` упаковывает только файлы корня и каталоги `schemas/` и `locale/`. Явное указание `--extra-source=src` критически важно для работы модульной ESM-архитектуры.
+
+### Оставшиеся VERIFY и риски
+1. `// VERIFY:` Поведение `displayName` и `shortName` для составных IBus-раскладок (например, японский/китайский ввод через ibus-anthy или ibus-pinyin) при динамическом переключении языка движка.
+2. `// VERIFY:` Интерактивное переключение в живой Wayland-сессии при открытом полноэкранном окне с прямым захватом ввода (Direct Scanout / VR).
+
+### Созданные и изменённые файлы
+- `src/log.js` — единый модуль логирования с поддержкой ключа `debug` (создан).
+- `src/inputSourceService.js` — сервис работы с раскладками и FallbackBackend (создан).
+- `tests/test-input-source-service.js` — модульные тесты сервиса раскладок на чистом GJS (создан).
+- `extension.js` — интеграция InputSourceService и публичного геттера (изменён).
+- `tests/smoke-test.js` — проверка доступности сервиса и 20 циклов в Shell (изменён).
+- `Makefile` — цели `unit-test`, добавление `--extra-source=src`, расширение `lint` (изменён).
+- `scripts/dev-run.sh` — включение `make unit-test` и `--extra-source=src` (изменён).
+- `docs/PROGRESS.md` — фиксация результатов Этапа 4 (изменён).
+
+
 
