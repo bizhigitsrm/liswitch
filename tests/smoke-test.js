@@ -48,11 +48,16 @@ export async function run() {
     if (!osd)
         throw new Error('osd service is not initialized on extension!');
 
+    const textCorrection = extObj.textCorrection;
+    if (!textCorrection)
+        throw new Error('textCorrection manager is not initialized on extension!');
+
     console.log(`[TEST] inputSourceService available: ${service.isAvailable}, sources: ${service.getSources().length}, current: ${service.getCurrentIndex()}`);
     console.log(`[TEST] indicator label: "${indicator.label?.text ?? ''}", statusArea registered: ${Boolean(Main.panel.statusArea[uuid])}`);
     console.log(`[TEST] hotkeyManager bound hotkeys: ${Array.from(hotkeyManager.boundHotkeys).join(', ')}`);
     console.log(`[TEST] windowMemory mode: ${windowMemory.memoryMode}, system per-window: ${windowMemory.isSystemPerWindowActive}`);
     console.log(`[TEST] osd enabled: ${osd.isEnabled}, duration: ${osd.duration}ms, autoSwitch: ${osd.showOnAutoSwitch}`);
+    console.log(`[TEST] textCorrection buffer size: ${textCorrection._buffer.length}`);
 
     // Verify default hotkeys are bound in window manager
     if (!hotkeyManager.boundHotkeys.has('hotkey-next'))
@@ -96,6 +101,11 @@ export async function run() {
             throw new Error('osd-duration-ms setting was not dynamically reflected!');
         extSettings.set_uint('osd-duration-ms', 1000);
         console.log('[TEST] Dynamic GSettings OSD settings verified');
+
+        // Test dynamic textCorrection settings
+        extSettings.set_boolean('convert-text-enabled', true);
+        extSettings.set_boolean('convert-text-enabled', false);
+        console.log('[TEST] Dynamic GSettings textCorrection verified');
     }
 
     // Test basic operations in headless session

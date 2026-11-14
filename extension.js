@@ -8,6 +8,7 @@ import {Indicator} from './src/indicator.js';
 import {HotkeyManager} from './src/hotkeys.js';
 import {WindowMemory} from './src/windowMemory.js';
 import {OsdService} from './src/osd.js';
+import {TextCorrectionManager} from './src/textCorrection.js';
 import * as Log from './src/log.js';
 
 export default class LiswitchExtension extends Extension {
@@ -36,6 +37,9 @@ export default class LiswitchExtension extends Extension {
 
         this._osd = new OsdService(this._settings, this._inputSourceService, this._windowMemory);
         this._osd.enable();
+
+        this._textCorrection = new TextCorrectionManager(this._settings, this._inputSourceService);
+        this._textCorrection.enable();
 
         this._indicator = null;
         this._syncIndicator();
@@ -96,6 +100,11 @@ export default class LiswitchExtension extends Extension {
         if (this._hotkeyManager) {
             this._hotkeyManager.destroy();
             this._hotkeyManager = null;
+        }
+
+        if (this._textCorrection) {
+            this._textCorrection.destroy();
+            this._textCorrection = null;
         }
 
         if (this._windowMemory) {
@@ -173,5 +182,23 @@ export default class LiswitchExtension extends Extension {
      */
     get osdService() {
         return this._osd;
+    }
+
+    /**
+     * Public accessor for the text correction manager
+     *
+     * @returns {TextCorrectionManager|null}
+     */
+    get textCorrection() {
+        return this._textCorrection;
+    }
+
+    /**
+     * Public alias accessor for the text correction manager
+     *
+     * @returns {TextCorrectionManager|null}
+     */
+    get textCorrectionManager() {
+        return this._textCorrection;
     }
 }

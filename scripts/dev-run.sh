@@ -31,6 +31,7 @@ gnome-extensions pack --force \
     --extra-source=hotkeys.js \
     --extra-source=windowMemory.js \
     --extra-source=osd.js \
+    --extra-source=textCorrection.js \
     --extra-source=src \
     --out-dir="${ROOT_DIR}" \
     "${ROOT_DIR}"

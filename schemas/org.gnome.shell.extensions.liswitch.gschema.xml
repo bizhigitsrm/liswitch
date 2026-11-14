@@ -137,5 +137,24 @@
       <description>Saved original values of switch-input-source-backward for rollback upon extension disable.</description>
     </key>
 
+    <!-- === Исправление текста (F6) === -->
+    <key name="convert-text-enabled" type="b">
+      <default>false</default>
+      <summary>Enable wrong layout text conversion</summary>
+      <description>Whether to enable in-memory keyboard buffer to convert text typed in the wrong layout (e.g. ghbdtn -> привет).</description>
+    </key>
+
+    <key name="convert-double-shift" type="b">
+      <default>true</default>
+      <summary>Trigger conversion on double Left Shift</summary>
+      <description>Convert the last typed word when Left Shift is pressed twice in quick succession.</description>
+    </key>
+
+    <key name="convert-hotkey" type="as">
+      <default><![CDATA[['<Shift>Pause']]]></default>
+      <summary>Shortcut to convert last typed word</summary>
+      <description>Keybinding to trigger layout conversion of the most recently typed word.</description>
+    </key>
+
   </schema>
 </schemalist>

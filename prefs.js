@@ -928,12 +928,180 @@ class LiswitchAboutPage extends Adw.PreferencesPage {
     }
 }
 
+/**
+ * Page 4: Text Correction Preferences («Исправление текста»)
+ *
+ * Configures wrong-layout text correction (F6), double Left Shift trigger,
+ * and security disclosures.
+ */
+class LiswitchCorrectionPage extends Adw.PreferencesPage {
+    static {
+        GObject.registerClass(this);
+    }
+
+    constructor(settings) {
+        super({
+            title: _('Correction'),
+            icon_name: 'edit-find-replace-symbolic',
+        });
+
+        this._settings = settings;
+
+        // Security / Privacy Warning Group
+        const infoGroup = new Adw.PreferencesGroup({
+            title: _('Security & Privacy'),
+        });
+        this.add(infoGroup);
+
+        const bannerRow = new Adw.ActionRow({
+            title: _('In-Memory Keystroke Buffer Notice'),
+            subtitle: _('When enabled, the extension maintains a temporary buffer of recent keystrokes (up to 64 chars) strictly in memory to convert text typed in the wrong layout (e.g. "ghbdtn" → "привет"). The buffer is automatically cleared on window focus changes, Enter, Tab, Esc, any modifier, or after 3 seconds of inactivity. Keystrokes are NEVER written to disk or logs.\n\n⚠️ Important: Wayland protocol isolates application surfaces. Extensions cannot detect password fields inside web browsers or third-party apps. Do not use this feature when entering sensitive passwords.'),
+        });
+        infoGroup.add(bannerRow);
+
+        // Settings Group
+        const configGroup = new Adw.PreferencesGroup({
+            title: _('Configuration'),
+        });
+        this.add(configGroup);
+
+        const enableRow = new Adw.SwitchRow({
+            title: _('Enable Text Correction'),
+            subtitle: _('Convert text typed in the wrong layout into the alternate language'),
+        });
+        configGroup.add(enableRow);
+        this._settings.bind(
+            'convert-text-enabled',
+            enableRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+
+        const doubleShiftRow = new Adw.SwitchRow({
+            title: _('Double Left Shift Trigger'),
+            subtitle: _('Press Left Shift twice quickly to convert the last typed word'),
+        });
+        configGroup.add(doubleShiftRow);
+        this._settings.bind(
+            'convert-double-shift',
+            doubleShiftRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+
+        // Manual Shortcut Group
+        const shortcutGroup = new Adw.PreferencesGroup({
+            title: _('Manual Hotkey'),
+            description: _('Keyboard shortcut to manually trigger text conversion'),
+        });
+        this.add(shortcutGroup);
+
+        this._createShortcutRow(shortcutGroup);
+    }
+
+    _createShortcutRow(group) {
+        const row = new Adw.ActionRow({
+            title: _('Convert Last Word'),
+            subtitle: _('Shortcut to trigger conversion of the most recently typed word'),
+        });
+        group.add(row);
+
+        const resetBtn = new Gtk.Button({
+            icon_name: 'edit-undo-symbolic',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+            tooltip_text: _('Reset to default shortcut (<Shift>Pause)'),
+        });
+        resetBtn.connect('clicked', () => {
+            this._settings.set_strv('convert-hotkey', ['<Shift>Pause']);
+            updateBtn();
+        });
+        row.add_suffix(resetBtn);
+
+        const recordBtn = new Gtk.Button({
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+        });
+        row.add_suffix(recordBtn);
+
+        const updateBtn = () => {
+            const arr = this._settings.get_strv('convert-hotkey');
+            const val = arr[0] || '';
+            recordBtn.label = formatShortcutLabel(val);
+        };
+        updateBtn();
+
+        let isRecording = false;
+        let controller = null;
+
+        const stopRecording = () => {
+            if (!isRecording)
+                return;
+            isRecording = false;
+            if (controller) {
+                const root = recordBtn.get_root();
+                const target = root ?? recordBtn;
+                try {
+                    target.remove_controller(controller);
+                } catch {
+                    // Ignore
+                }
+                controller = null;
+            }
+            recordBtn.css_classes = ['flat'];
+            updateBtn();
+        };
+
+        recordBtn.connect('clicked', () => {
+            if (isRecording) {
+                stopRecording();
+                return;
+            }
+
+            isRecording = true;
+            recordBtn.label = _('Press keys… (Esc: cancel, Backspace: disable)');
+            recordBtn.css_classes = ['suggested-action'];
+
+            controller = new Gtk.EventControllerKey({
+                propagation_phase: Gtk.PropagationPhase.CAPTURE,
+            });
+
+            controller.connect('key-pressed', (_ctrl, keyval, _keycode, state) => {
+                const cleanState = state & Gtk.accelerator_get_default_mod_mask();
+                if (keyval === Gdk.KEY_Escape) {
+                    stopRecording();
+                    return Gdk.EVENT_STOP;
+                }
+                if (keyval === Gdk.KEY_BackSpace && cleanState === 0) {
+                    this._settings.set_strv('convert-hotkey', []);
+                    stopRecording();
+                    return Gdk.EVENT_STOP;
+                }
+                const accelName = Gtk.accelerator_name(keyval, cleanState);
+                if (accelName && !isModifierOnlyShortcut(accelName)) {
+                    this._settings.set_strv('convert-hotkey', [accelName]);
+                    stopRecording();
+                    return Gdk.EVENT_STOP;
+                }
+                return Gdk.EVENT_PROPAGATE;
+            });
+
+            const root = recordBtn.get_root();
+            const target = root ?? recordBtn;
+            target.add_controller(controller);
+        });
+
+        this._settings.connect('changed::convert-hotkey', () => updateBtn());
+    }
+}
+
 export default class LiswitchPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
         window.add(new LiswitchGeneralPage(settings));
         window.add(new LiswitchShortcutsPage(settings));
         window.add(new LiswitchMemoryPage(settings));
+        window.add(new LiswitchCorrectionPage(settings));
         window.add(new LiswitchAboutPage(settings));
     }
 }
