@@ -388,6 +388,18 @@ export const InputSourceService = GObject.registerClass({
     }
 
     /**
+     * Return current active input source object, or null if unavailable.
+     *
+     * @returns {{index: number, id: string, shortName: string, displayName: string}|null}
+     */
+    getCurrentSource() {
+        if (!this._isAvailable || this._currentIndex < 0)
+            return null;
+        const sources = this.getSources();
+        return sources.find(s => s.index === this._currentIndex) ?? null;
+    }
+
+    /**
      * Switch to the input source at the given index.
      *
      * @param {number} index - Index of layout to activate

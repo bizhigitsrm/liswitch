@@ -1,1 +1,15 @@
 /* Liswitch GNOME Shell extension stylesheet */
+
+/* Panel button inherits standard GNOME Shell .panel-button styling */
+.liswitch-indicator {
+    -natural-hpadding: 6px;
+    -minimum-hpadding: 6px;
+}
+
+/* Indicator label inherits text color, font family and sizing from shell theme */
+.liswitch-indicator-label {
+    font-weight: bold;
+    text-align: center;
+    min-width: 1.8em;
+    padding: 0 2px;
+}

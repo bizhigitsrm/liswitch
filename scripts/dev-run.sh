@@ -27,6 +27,7 @@ echo "==> 3. Packaging extension..."
 gnome-extensions pack --force \
     --extra-source=stylesheet.css \
     --extra-source=LICENSE \
+    --extra-source=indicator.js \
     --extra-source=src \
     --out-dir="${ROOT_DIR}" \
     "${ROOT_DIR}"

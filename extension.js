@@ -2,7 +2,9 @@
 // Liswitch: Keyboard layout switcher for GNOME Shell 51
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {InputSourceService} from './src/inputSourceService.js';
+import {Indicator} from './src/indicator.js';
 import * as Log from './src/log.js';
 
 export default class LiswitchExtension extends Extension {
@@ -22,10 +24,57 @@ export default class LiswitchExtension extends Extension {
         } else {
             Log.warn('InputSourceService is unavailable (no input sources configured or manager unavailable)');
         }
+
+        this._indicator = null;
+        this._syncIndicator();
+
+        this._indicatorSettingId = this._settings.connect('changed::indicator-enabled', () => {
+            this._syncIndicator();
+        });
+    }
+
+    _syncIndicator() {
+        const isEnabled = this._settings?.get_boolean('indicator-enabled') ?? true;
+
+        if (isEnabled && !this._indicator) {
+            this._indicator = new Indicator(
+                this._settings,
+                this._inputSourceService,
+                () => this.openPreferences()
+            );
+
+            // Position right next to system keyboard indicator if present
+            let position = 0;
+            if (Main?.panel?.statusArea?.keyboard?.container) {
+                const children = Main.panel._rightBox?.get_children?.() ?? [];
+                const idx = children.indexOf(Main.panel.statusArea['keyboard'].container);
+                if (idx >= 0)
+                    position = idx;
+            }
+
+            if (Main?.panel?.addToStatusArea) {
+                Main.panel.addToStatusArea(this.uuid, this._indicator, position, 'right');
+                Log.debug(`Indicator added to status area (role: ${this.uuid}, position: ${position})`);
+            }
+        } else if (!isEnabled && this._indicator) {
+            Log.debug('Indicator disabled in settings: destroying indicator button');
+            this._indicator.destroy();
+            this._indicator = null;
+        }
     }
 
     disable() {
         Log.info('Disabling extension');
+
+        if (this._indicatorSettingId) {
+            this._settings?.disconnect(this._indicatorSettingId);
+            this._indicatorSettingId = 0;
+        }
+
+        if (this._indicator) {
+            this._indicator.destroy();
+            this._indicator = null;
+        }
 
         if (this._inputSourceService) {
             this._inputSourceService.destroy();
@@ -43,5 +92,14 @@ export default class LiswitchExtension extends Extension {
      */
     get inputSourceService() {
         return this._inputSourceService;
+    }
+
+    /**
+     * Public accessor for the panel indicator (accessible from Looking Glass or test harness)
+     *
+     * @returns {Indicator|null}
+     */
+    get indicator() {
+        return this._indicator;
     }
 }

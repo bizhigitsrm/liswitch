@@ -8,5 +8,30 @@
       <description>Whether to print verbose debug messages to the system log.</description>
     </key>
 
+    <!-- === Индикатор панели === -->
+    <key name="indicator-enabled" type="b">
+      <default>true</default>
+      <summary>Show indicator in top panel</summary>
+      <description>Whether to show the language indicator button in the GNOME Shell top panel.</description>
+    </key>
+
+    <key name="hide-system-indicator" type="b">
+      <default>false</default>
+      <summary>Hide default system keyboard indicator</summary>
+      <description>Whether to hide the default GNOME Shell keyboard indicator to prevent duplicates.</description>
+    </key>
+
+    <key name="indicator-format" type="s">
+      <default>'short'</default>
+      <summary>Format of the layout text in the panel</summary>
+      <description>Display format for the current layout code: 'short' (uppercase code, e.g. EN, RU), 'lowercase' (en, ru), 'full' (displayName, e.g. English (US), Russian).</description>
+    </key>
+
+    <key name="scroll-switch" type="b">
+      <default>true</default>
+      <summary>Switch layout with mouse scroll</summary>
+      <description>Whether scrolling the mouse wheel over the indicator switches to next/previous layout.</description>
+    </key>
+
   </schema>
 </schemalist>

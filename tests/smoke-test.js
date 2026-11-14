@@ -32,7 +32,12 @@ export async function run() {
     if (!service)
         throw new Error('inputSourceService is not initialized on extension!');
 
+    const indicator = extObj.indicator;
+    if (!indicator)
+        throw new Error('indicator is not initialized on extension!');
+
     console.log(`[TEST] inputSourceService available: ${service.isAvailable}, sources: ${service.getSources().length}, current: ${service.getCurrentIndex()}`);
+    console.log(`[TEST] indicator label: "${indicator.label?.text ?? ''}", statusArea registered: ${Boolean(Main.panel.statusArea[uuid])}`);
 
     // Test basic operations in headless session
     if (service.isAvailable && service.getSources().length > 1) {
@@ -50,12 +55,21 @@ export async function run() {
         if (ext.state === 1)
             throw new Error(`Iteration ${i}: Failed to disable extension`);
 
+        if (Main.panel.statusArea[uuid])
+            throw new Error(`Iteration ${i}: Status area indicator leaked after disable`);
+
         Main.extensionManager.enableExtension(uuid);
         if (ext.state !== 1)
             throw new Error(`Iteration ${i}: Failed to enable extension`);
 
         if (!ext.stateObj?.inputSourceService)
             throw new Error(`Iteration ${i}: inputSourceService missing after re-enable`);
+
+        if (!ext.stateObj?.indicator)
+            throw new Error(`Iteration ${i}: indicator missing after re-enable`);
+
+        if (!Main.panel.statusArea[uuid])
+            throw new Error(`Iteration ${i}: Status area indicator not registered after re-enable`);
     }
 
     console.log('[TEST] All 20 enable/disable cycles completed successfully without errors!');
