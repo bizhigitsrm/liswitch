@@ -5,7 +5,8 @@
   "shell-version": [
     "51"
   ],
-  "version-name": "0.1.0",
+  "version": 1,
+  "version-name": "1.0.0",
   "url": "https://github.com/liswitch/liswitch",
   "gettext-domain": "liswitch",
   "settings-schema": "org.gnome.shell.extensions.liswitch",

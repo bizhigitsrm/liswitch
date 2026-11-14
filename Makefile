@@ -3,7 +3,7 @@ PACK_FILE = $(UUID).shell-extension.zip
 SCHEMA_DIR = schemas
 SCHEMA_FILE = $(SCHEMA_DIR)/org.gnome.shell.extensions.liswitch.gschema.xml
 
-.PHONY: all schemas translations pot pack install uninstall enable disable logs nested test unit-test lint check clean
+.PHONY: all schemas translations pot pack install uninstall enable disable logs nested test unit-test lint check clean release
 
 all: pack
 
@@ -124,6 +124,9 @@ lint: schemas
 	fi
 
 check: lint
+
+release:
+	./scripts/release.sh
 
 clean:
 	rm -rf $(PACK_FILE) $(UUID).zip $(SCHEMA_DIR)/gschemas.compiled locale
