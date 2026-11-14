@@ -7,6 +7,7 @@ import {InputSourceService} from './src/inputSourceService.js';
 import {Indicator} from './src/indicator.js';
 import {HotkeyManager} from './src/hotkeys.js';
 import {WindowMemory} from './src/windowMemory.js';
+import {OsdService} from './src/osd.js';
 import * as Log from './src/log.js';
 
 export default class LiswitchExtension extends Extension {
@@ -32,6 +33,9 @@ export default class LiswitchExtension extends Extension {
 
         this._hotkeyManager = new HotkeyManager(this._settings, this._inputSourceService);
         this._hotkeyManager.enable();
+
+        this._osd = new OsdService(this._settings, this._inputSourceService, this._windowMemory);
+        this._osd.enable();
 
         this._indicator = null;
         this._syncIndicator();
@@ -82,6 +86,11 @@ export default class LiswitchExtension extends Extension {
         if (this._indicator) {
             this._indicator.destroy();
             this._indicator = null;
+        }
+
+        if (this._osd) {
+            this._osd.destroy();
+            this._osd = null;
         }
 
         if (this._hotkeyManager) {
@@ -146,5 +155,23 @@ export default class LiswitchExtension extends Extension {
      */
     get hotkeyManager() {
         return this._hotkeyManager;
+    }
+
+    /**
+     * Public accessor for the visual OSD service (accessible from Looking Glass or test harness)
+     *
+     * @returns {OsdService|null}
+     */
+    get osd() {
+        return this._osd;
+    }
+
+    /**
+     * Public alias accessor for the visual OSD service
+     *
+     * @returns {OsdService|null}
+     */
+    get osdService() {
+        return this._osd;
     }
 }

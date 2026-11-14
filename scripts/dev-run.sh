@@ -30,6 +30,7 @@ gnome-extensions pack --force \
     --extra-source=indicator.js \
     --extra-source=hotkeys.js \
     --extra-source=windowMemory.js \
+    --extra-source=osd.js \
     --extra-source=src \
     --out-dir="${ROOT_DIR}" \
     "${ROOT_DIR}"

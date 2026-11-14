@@ -44,10 +44,15 @@ export async function run() {
     if (!windowMemory)
         throw new Error('windowMemory is not initialized on extension!');
 
+    const osd = extObj.osd;
+    if (!osd)
+        throw new Error('osd service is not initialized on extension!');
+
     console.log(`[TEST] inputSourceService available: ${service.isAvailable}, sources: ${service.getSources().length}, current: ${service.getCurrentIndex()}`);
     console.log(`[TEST] indicator label: "${indicator.label?.text ?? ''}", statusArea registered: ${Boolean(Main.panel.statusArea[uuid])}`);
     console.log(`[TEST] hotkeyManager bound hotkeys: ${Array.from(hotkeyManager.boundHotkeys).join(', ')}`);
     console.log(`[TEST] windowMemory mode: ${windowMemory.memoryMode}, system per-window: ${windowMemory.isSystemPerWindowActive}`);
+    console.log(`[TEST] osd enabled: ${osd.isEnabled}, duration: ${osd.duration}ms, autoSwitch: ${osd.showOnAutoSwitch}`);
 
     // Verify default hotkeys are bound in window manager
     if (!hotkeyManager.boundHotkeys.has('hotkey-next'))
@@ -77,6 +82,20 @@ export async function run() {
         if (windowMemory.memoryMode !== 'per-app')
             throw new Error('memory-mode was not dynamically restored!');
         console.log('[TEST] Dynamic GSettings memory-mode verified');
+
+        // Test dynamic OSD settings
+        extSettings.set_boolean('show-osd', false);
+        if (osd.isEnabled !== false)
+            throw new Error('show-osd setting was not dynamically reflected!');
+        extSettings.set_boolean('show-osd', true);
+        if (osd.isEnabled !== true)
+            throw new Error('show-osd setting was not dynamically restored!');
+
+        extSettings.set_uint('osd-duration-ms', 1200);
+        if (osd.duration !== 1200)
+            throw new Error('osd-duration-ms setting was not dynamically reflected!');
+        extSettings.set_uint('osd-duration-ms', 1000);
+        console.log('[TEST] Dynamic GSettings OSD settings verified');
     }
 
     // Test basic operations in headless session
@@ -113,6 +132,9 @@ export async function run() {
 
         if (!ext.stateObj?.windowMemory)
             throw new Error(`Iteration ${i}: windowMemory missing after re-enable`);
+
+        if (!ext.stateObj?.osd)
+            throw new Error(`Iteration ${i}: osd service missing after re-enable`);
 
         if (!ext.stateObj?.hotkeyManager.boundHotkeys.has('hotkey-next'))
             throw new Error(`Iteration ${i}: hotkey-next missing after re-enable`);

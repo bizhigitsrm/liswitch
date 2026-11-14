@@ -2,11 +2,12 @@
 // Liswitch: Preferences for GNOME Shell 51
 
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk?version=4.0';
 import Gio from 'gi://Gio';
-import Gtk from 'gi://Gtk';
 import GObject from 'gi://GObject';
+import Gtk from 'gi://Gtk';
 
-import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+import {ExtensionPreferences, gettext as shellGettext} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import {
     checkConflicts,
     freeSystemShortcut,
@@ -15,6 +16,48 @@ import {
     normalizeShortcut,
 } from './src/hotkeys.js';
 
+function _(str) {
+    try {
+        return shellGettext(str);
+    } catch {
+        return str;
+    }
+}
+
+const ALL_HOTKEY_KEYS = [
+    'hotkey-next',
+    'hotkey-previous',
+    'hotkey-switch-1',
+    'hotkey-switch-2',
+    'hotkey-switch-3',
+    'hotkey-switch-4',
+];
+
+/**
+ * Format a key accelerator string into a human-readable label.
+ *
+ * @param {string} shortcut - Raw shortcut, e.g. '<Control><Alt>space'
+ * @returns {string} - Human-readable label, e.g. 'Ctrl+Alt+Space' or 'Disabled'
+ */
+function formatShortcutLabel(shortcut) {
+    if (!shortcut || !shortcut.trim())
+        return _('Disabled');
+
+    const [ok, keyval, mods] = Gtk.accelerator_parse(shortcut.trim());
+    if (ok && keyval !== 0) {
+        const label = Gtk.accelerator_get_label(keyval, mods);
+        if (label)
+            return label;
+    }
+
+    return shortcut.trim();
+}
+
+/**
+ * Page 1: General Preferences («Основное»)
+ *
+ * Configures the top panel indicator, mouse scroll switching, and visual OSD overlay.
+ */
 class LiswitchGeneralPage extends Adw.PreferencesPage {
     static {
         GObject.registerClass(this);
@@ -95,6 +138,103 @@ class LiswitchGeneralPage extends Adw.PreferencesPage {
                 this._settings.set_string('indicator-format', formatValues[idx]);
         });
 
+        indicatorRow.bind_property(
+            'active',
+            hideSystemRow,
+            'sensitive',
+            GObject.BindingFlags.DEFAULT | GObject.BindingFlags.SYNC_CREATE
+        );
+        indicatorRow.bind_property(
+            'active',
+            scrollRow,
+            'sensitive',
+            GObject.BindingFlags.DEFAULT | GObject.BindingFlags.SYNC_CREATE
+        );
+        indicatorRow.bind_property(
+            'active',
+            formatRow,
+            'sensitive',
+            GObject.BindingFlags.DEFAULT | GObject.BindingFlags.SYNC_CREATE
+        );
+
+        // --- On-Screen Display (OSD) Group ---
+        const osdGroup = new Adw.PreferencesGroup({
+            title: _('On-Screen Display (OSD)'),
+            description: _('Visual notification popup when switching layouts'),
+        });
+        this.add(osdGroup);
+
+        const osdRow = new Adw.SwitchRow({
+            title: _('Show OSD Pop-up'),
+            subtitle: _('Display a brief centered notification when layout changes'),
+        });
+        osdGroup.add(osdRow);
+
+        if (this._settings.settings_schema?.has_key('show-osd')) {
+            this._settings.bind(
+                'show-osd',
+                osdRow,
+                'active',
+                Gio.SettingsBindFlags.DEFAULT
+            );
+        }
+
+        const durationRow = new Adw.SpinRow({
+            title: _('OSD Duration'),
+            subtitle: _('How long the OSD stays visible (in milliseconds)'),
+            adjustment: new Gtk.Adjustment({
+                lower: 300,
+                upper: 3000,
+                step_increment: 100,
+                page_increment: 500,
+            }),
+        });
+        osdGroup.add(durationRow);
+
+        if (this._settings.settings_schema?.has_key('osd-duration-ms')) {
+            const currentDuration = this._settings.get_uint('osd-duration-ms') || 1000;
+            durationRow.set_value(currentDuration);
+
+            durationRow.connect('notify::value', () => {
+                const val = Math.round(durationRow.get_value());
+                this._settings.set_uint('osd-duration-ms', val);
+            });
+
+            this._settings.connect('changed::osd-duration-ms', () => {
+                const val = this._settings.get_uint('osd-duration-ms') || 1000;
+                if (Math.round(durationRow.get_value()) !== val)
+                    durationRow.set_value(val);
+            });
+        }
+
+        const autoSwitchRow = new Adw.SwitchRow({
+            title: _('Show OSD on Window Restore'),
+            subtitle: _('Display notification when layout is restored automatically by window memory'),
+        });
+        osdGroup.add(autoSwitchRow);
+
+        if (this._settings.settings_schema?.has_key('osd-show-on-auto-switch')) {
+            this._settings.bind(
+                'osd-show-on-auto-switch',
+                autoSwitchRow,
+                'active',
+                Gio.SettingsBindFlags.DEFAULT
+            );
+        }
+
+        osdRow.bind_property(
+            'active',
+            durationRow,
+            'sensitive',
+            GObject.BindingFlags.DEFAULT | GObject.BindingFlags.SYNC_CREATE
+        );
+        osdRow.bind_property(
+            'active',
+            autoSwitchRow,
+            'sensitive',
+            GObject.BindingFlags.DEFAULT | GObject.BindingFlags.SYNC_CREATE
+        );
+
         // --- Diagnostics Group ---
         const debugGroup = new Adw.PreferencesGroup({
             title: _('Diagnostics'),
@@ -117,6 +257,351 @@ class LiswitchGeneralPage extends Adw.PreferencesPage {
     }
 }
 
+/**
+ * Page 2: Shortcuts Preferences («Горячие клавиши»)
+ *
+ * Interactive shortcut recorder using Gtk.EventControllerKey, Escape cancellation,
+ * Backspace clearing, conflict detection, duplicate validation, and reset to defaults.
+ */
+class LiswitchShortcutsPage extends Adw.PreferencesPage {
+    static {
+        GObject.registerClass(this);
+    }
+
+    constructor(settings) {
+        super({
+            title: _('Shortcuts'),
+            icon_name: 'input-keyboard-symbolic',
+        });
+
+        this._settings = settings;
+        this._rowRefreshCallbacks = [];
+        this._activeRecorderStop = null;
+        this._actionTitles = new Map();
+
+        this._buildUi();
+
+        // Refresh rows when backup settings change
+        this._settings.connect('changed::backup-system-shortcuts', () => {
+            this._refreshAllRows();
+        });
+    }
+
+    _refreshAllRows() {
+        for (const cb of this._rowRefreshCallbacks) {
+            try {
+                cb();
+            } catch {
+                // Ignore
+            }
+        }
+    }
+
+    _buildUi() {
+        // --- Cyclic Switching Group ---
+        const switchGroup = new Adw.PreferencesGroup({
+            title: _('Layout Switching Shortcuts'),
+            description: _('Configure keybindings to switch between configured input sources'),
+        });
+        this.add(switchGroup);
+
+        this._createShortcutRow(
+            switchGroup,
+            'hotkey-next',
+            _('Next Layout'),
+            _('Cycle forward through available input sources'),
+            ['<Control><Alt>space']
+        );
+
+        this._createShortcutRow(
+            switchGroup,
+            'hotkey-previous',
+            _('Previous Layout'),
+            _('Cycle backward through available input sources'),
+            ['<Control><Alt><Shift>space']
+        );
+
+        // --- Direct Selection Group ---
+        const directGroup = new Adw.PreferencesGroup({
+            title: _('Direct Layout Selection'),
+            description: _('Jump directly to a specific layout by number (1 to 4)'),
+        });
+        this.add(directGroup);
+
+        for (let i = 1; i <= 4; i++) {
+            this._createShortcutRow(
+                directGroup,
+                `hotkey-switch-${i}`,
+                _('Switch to Layout %d').format(i),
+                _('Directly activate layout at index %d').format(i - 1),
+                []
+            );
+        }
+
+        // --- Modifiers & System Architecture Notice ---
+        const noticeGroup = new Adw.PreferencesGroup({
+            title: _('Modifier-Only Shortcuts Note'),
+            description: _(
+                'GNOME Shell keybindings require a non-modifier key (like Space, Letter, or Digit). ' +
+                'Pure modifier combinations (such as Alt+Shift or Caps Lock) cannot be assigned via extension keybindings; ' +
+                'they are managed at the system XKB level in Settings → Keyboard → Special Character Entry or GNOME Tweaks.'
+            ),
+        });
+        this.add(noticeGroup);
+    }
+
+    /**
+     * Find if another Liswitch action already uses the given accelerator.
+     *
+     * @param {string} currentKeyName - Key being assigned
+     * @param {string} newShortcut - Accelerator to check
+     * @returns {string|null} - Title of conflicting action, or null
+     */
+    _findDuplicateAction(currentKeyName, newShortcut) {
+        if (!newShortcut || !newShortcut.trim())
+            return null;
+
+        const targetNorm = normalizeShortcut(newShortcut);
+
+        for (const otherKey of ALL_HOTKEY_KEYS) {
+            if (otherKey === currentKeyName)
+                continue;
+
+            const otherArr = this._settings.get_strv(otherKey);
+            for (const item of otherArr) {
+                if (normalizeShortcut(item) === targetNorm)
+                    return this._actionTitles.get(otherKey) ?? otherKey;
+            }
+        }
+
+        return null;
+    }
+
+    _createShortcutRow(group, keyName, title, defaultDescription, defaultShortcuts) {
+        this._actionTitles.set(keyName, title);
+
+        const row = new Adw.ActionRow({
+            title,
+            subtitle: defaultDescription,
+        });
+        group.add(row);
+
+        // Conflict action button (Free / Restore in System)
+        const conflictBtn = new Gtk.Button({
+            valign: Gtk.Align.CENTER,
+            visible: false,
+        });
+        row.add_suffix(conflictBtn);
+
+        // Reset to default button
+        const resetBtn = new Gtk.Button({
+            icon_name: 'edit-undo-symbolic',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+            tooltip_text: _('Reset to default shortcut (%s)').format(
+                defaultShortcuts.length > 0 ? defaultShortcuts.join(', ') : _('Disabled')
+            ),
+        });
+        resetBtn.connect('clicked', () => {
+            this._settings.set_strv(keyName, defaultShortcuts);
+            this._refreshAllRows();
+        });
+        row.add_suffix(resetBtn);
+
+        // Record / Display button
+        const recordBtn = new Gtk.Button({
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+        });
+        row.add_suffix(recordBtn);
+
+        let isRecording = false;
+        let controller = null;
+
+        const stopRecording = () => {
+            if (!isRecording)
+                return;
+            isRecording = false;
+            this._activeRecorderStop = null;
+
+            if (controller) {
+                const root = recordBtn.get_root();
+                const target = root ?? recordBtn;
+                try {
+                    target.remove_controller(controller);
+                } catch {
+                    // Ignore
+                }
+                controller = null;
+            }
+
+            recordBtn.remove_css_class('suggested-action');
+            updateUi();
+        };
+
+        const startRecording = () => {
+            if (this._activeRecorderStop)
+                this._activeRecorderStop();
+
+            isRecording = true;
+            this._activeRecorderStop = stopRecording;
+
+            recordBtn.add_css_class('suggested-action');
+            recordBtn.label = _('Press keys…');
+            row.subtitle = _('Press keys now — Escape to cancel, Backspace to disable');
+
+            controller = new Gtk.EventControllerKey();
+            controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE);
+
+            controller.connect('key-pressed', (_c, keyval, _keycode, state) => {
+                // 1. Escape: Cancel recording without modifying settings
+                if (keyval === Gdk.KEY_Escape) {
+                    stopRecording();
+                    return Gdk.EVENT_STOP;
+                }
+
+                // 2. Backspace: Clear shortcut (empty is valid, means Disabled)
+                if (keyval === Gdk.KEY_BackSpace) {
+                    this._settings.set_strv(keyName, []);
+                    stopRecording();
+                    this._refreshAllRows();
+                    return Gdk.EVENT_STOP;
+                }
+
+                // 3. Modifier-only keys: Wait for a non-modifier key
+                const mask = state & Gtk.accelerator_get_default_mod_mask();
+                if (!Gtk.accelerator_valid(keyval, mask))
+                    return Gdk.EVENT_STOP;
+
+                // 4. Form valid accelerator name
+                const accel = Gtk.accelerator_name(keyval, mask);
+                if (!accel)
+                    return Gdk.EVENT_STOP;
+
+                // 5. Validation: check duplicates among Liswitch actions
+                const duplicateActionTitle = this._findDuplicateAction(keyName, accel);
+                if (duplicateActionTitle) {
+                    stopRecording();
+                    row.subtitle = `⚠️ ${_('Shortcut "%s" is already assigned to "%s".').format(accel, duplicateActionTitle)}`;
+                    return Gdk.EVENT_STOP;
+                }
+
+                // 6. Save valid combination
+                this._settings.set_strv(keyName, [accel]);
+                stopRecording();
+                this._refreshAllRows();
+                return Gdk.EVENT_STOP;
+            });
+
+            const root = recordBtn.get_root();
+            const target = root ?? recordBtn;
+            target.add_controller(controller);
+        };
+
+        recordBtn.connect('clicked', () => {
+            if (isRecording)
+                stopRecording();
+            else
+                startRecording();
+        });
+
+        const updateUi = () => {
+            if (isRecording)
+                return;
+
+            const currentArr = this._settings.get_strv(keyName);
+            const currentStr = currentArr[0]?.trim() ?? '';
+
+            recordBtn.label = formatShortcutLabel(currentStr);
+
+            const allConflicts = checkConflicts(this._settings);
+            const keyConflicts = allConflicts.filter(c => c.hotkeyKey === keyName);
+
+            let backupMap = {};
+            try {
+                const bStr = this._settings.get_string('backup-system-shortcuts');
+                if (bStr)
+                    backupMap = JSON.parse(bStr);
+            } catch {
+                backupMap = {};
+            }
+
+            if (!currentStr) {
+                row.subtitle = `${defaultDescription} (${_('Disabled')})`;
+                conflictBtn.visible = false;
+                return;
+            }
+
+            if (isModifierOnlyShortcut(currentStr)) {
+                row.subtitle = `⚠️ ${_('Modifier-only shortcut cannot be bound in GNOME Shell: %s').format(currentStr)}`;
+                conflictBtn.visible = false;
+                return;
+            }
+
+            if (keyConflicts.length > 0) {
+                const conf = keyConflicts[0];
+                row.subtitle = `⚠️ ${_('Conflict: shortcut "%s" is assigned to %s (%s)').format(
+                    conf.shortcut,
+                    conf.schemaKey,
+                    conf.schemaId
+                )}`;
+
+                conflictBtn.visible = true;
+                conflictBtn.label = _('Free in System');
+                conflictBtn.css_classes = ['suggested-action'];
+
+                conflictBtn.disconnectByFunc?.();
+                conflictBtn.connect('clicked', () => {
+                    freeSystemShortcut(conf, this._settings);
+                    this._refreshAllRows();
+                });
+            } else {
+                // Check if this shortcut was previously freed and is stored in backups
+                let freedEntry = null;
+                const normShort = normalizeShortcut(currentStr);
+
+                for (const [, entry] of Object.entries(backupMap)) {
+                    const entryVals = Array.isArray(entry.value) ? entry.value : [entry.value];
+                    if (entryVals.some(v => normalizeShortcut(v) === normShort)) {
+                        freedEntry = entry;
+                        break;
+                    }
+                }
+
+                if (freedEntry) {
+                    row.subtitle = _('Overriding system shortcut: %s (%s)').format(
+                        freedEntry.schemaKey,
+                        freedEntry.schemaId
+                    );
+
+                    conflictBtn.visible = true;
+                    conflictBtn.label = _('Restore in System');
+                    conflictBtn.css_classes = [];
+
+                    conflictBtn.disconnectByFunc?.();
+                    conflictBtn.connect('clicked', () => {
+                        restoreSystemShortcut(freedEntry.schemaId, freedEntry.schemaKey, this._settings);
+                        this._refreshAllRows();
+                    });
+                } else {
+                    row.subtitle = defaultDescription;
+                    conflictBtn.visible = false;
+                }
+            }
+        };
+
+        this._settings.connect(`changed::${keyName}`, updateUi);
+        this._rowRefreshCallbacks.push(updateUi);
+
+        updateUi();
+    }
+}
+
+/**
+ * Page 3: Memory Preferences («Запоминание»)
+ *
+ * Configures per-window/per-app layout memory and excluded applications list.
+ */
 class LiswitchMemoryPage extends Adw.PreferencesPage {
     static {
         GObject.registerClass(this);
@@ -333,244 +818,113 @@ class LiswitchMemoryPage extends Adw.PreferencesPage {
     }
 }
 
-class LiswitchShortcutsPage extends Adw.PreferencesPage {
+/**
+ * Page 4: About Preferences («О расширении»)
+ *
+ * Information about Liswitch, developer, license, and links.
+ */
+class LiswitchAboutPage extends Adw.PreferencesPage {
     static {
         GObject.registerClass(this);
     }
 
-    constructor(settings) {
+    constructor(_settings) {
         super({
-            title: _('Shortcuts'),
+            title: _('About'),
+            icon_name: 'help-about-symbolic',
+        });
+
+        // App Branding Group
+        const headerGroup = new Adw.PreferencesGroup();
+        this.add(headerGroup);
+
+        const bannerBox = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 8,
+            margin_top: 18,
+            margin_bottom: 18,
+            halign: Gtk.Align.CENTER,
+        });
+
+        const icon = new Gtk.Image({
             icon_name: 'input-keyboard-symbolic',
+            pixel_size: 64,
+            halign: Gtk.Align.CENTER,
         });
+        bannerBox.append(icon);
 
-        this._settings = settings;
-        this._rowRefreshCallbacks = [];
-
-        this._buildUi();
-
-        // Refresh rows when backup settings change
-        this._settings.connect('changed::backup-system-shortcuts', () => {
-            this._refreshAllRows();
+        const titleLabel = new Gtk.Label({
+            label: '<span size="xx-large" weight="bold">Liswitch</span>',
+            use_markup: true,
+            halign: Gtk.Align.CENTER,
         });
-    }
+        bannerBox.append(titleLabel);
 
-    _refreshAllRows() {
-        for (const cb of this._rowRefreshCallbacks) {
-            try {
-                cb();
-            } catch {
-                // Ignore
-            }
-        }
-    }
-
-    _buildUi() {
-        // --- Cyclic Switching Group ---
-        const switchGroup = new Adw.PreferencesGroup({
-            title: _('Layout Switching Shortcuts'),
-            description: _('Configure keybindings to switch between configured input sources'),
+        const subtitleLabel = new Gtk.Label({
+            label: _('Advanced keyboard layout switcher for GNOME Shell 51'),
+            halign: Gtk.Align.CENTER,
+            css_classes: ['dim-label'],
         });
-        this.add(switchGroup);
+        bannerBox.append(subtitleLabel);
 
-        this._createShortcutRow(
-            switchGroup,
-            'hotkey-next',
-            _('Next Layout'),
-            _('Cycle forward through available input sources'),
-            ['<Control><Alt>space']
-        );
-
-        this._createShortcutRow(
-            switchGroup,
-            'hotkey-previous',
-            _('Previous Layout'),
-            _('Cycle backward through available input sources'),
-            ['<Control><Alt><Shift>space']
-        );
-
-        // --- Direct Selection Group ---
-        const directGroup = new Adw.PreferencesGroup({
-            title: _('Direct Layout Selection'),
-            description: _('Jump directly to a specific layout by number (1 to 4)'),
+        const versionLabel = new Gtk.Label({
+            label: _('Version %s').format('51.0'),
+            halign: Gtk.Align.CENTER,
+            css_classes: ['dim-label'],
         });
-        this.add(directGroup);
+        bannerBox.append(versionLabel);
 
-        for (let i = 1; i <= 4; i++) {
-            this._createShortcutRow(
-                directGroup,
-                `hotkey-switch-${i}`,
-                _('Switch to Layout %d').format(i),
-                _('Directly activate layout at index %d').format(i - 1),
-                []
-            );
-        }
+        headerGroup.add(bannerBox);
 
-        // --- Modifiers & System Architecture Notice ---
-        const noticeGroup = new Adw.PreferencesGroup({
-            title: _('Modifier-Only Shortcuts Note'),
-            description: _(
-                'GNOME Shell keybindings require a non-modifier key (like Space, Letter, or Digit). ' +
-                'Pure modifier combinations (such as Alt+Shift or Caps Lock) cannot be assigned via extension keybindings; ' +
-                'they are managed at the system XKB level in Settings → Keyboard → Special Character Entry or GNOME Tweaks.'
-            ),
+        // Details Group
+        const detailsGroup = new Adw.PreferencesGroup({
+            title: _('Information'),
         });
-        this.add(noticeGroup);
-    }
+        this.add(detailsGroup);
 
-    _createShortcutRow(group, keyName, title, description, defaultShortcuts) {
-        const expander = new Adw.ExpanderRow({
-            title,
-            subtitle: '',
+        const devRow = new Adw.ActionRow({
+            title: _('Developer'),
+            subtitle: 'Liswitch Project',
         });
-        group.add(expander);
+        detailsGroup.add(devRow);
 
-        // Text entry to view/edit shortcut
-        const entryRow = new Adw.EntryRow({
-            title: _('Key combination (e.g. <Control><Alt>space)'),
-            show_apply_button: true,
+        const licenseRow = new Adw.ActionRow({
+            title: _('License'),
+            subtitle: 'GNU General Public License v2.0 or later (GPL-2.0-or-later)',
         });
-        expander.add_row(entryRow);
+        detailsGroup.add(licenseRow);
 
-        // Status row for conflicts or warnings
-        const statusRow = new Adw.ActionRow({
-            title: '',
-            subtitle: '',
-            visible: false,
+        const platformRow = new Adw.ActionRow({
+            title: _('Platform'),
+            subtitle: 'GNOME Shell 51 (Wayland)',
         });
-        expander.add_row(statusRow);
+        detailsGroup.add(platformRow);
 
-        // Action button for conflict resolution (Free / Restore)
-        const actionButton = new Gtk.Button({
+        // Links Group
+        const linksGroup = new Adw.PreferencesGroup({
+            title: _('Links & Support'),
+        });
+        this.add(linksGroup);
+
+        const sourceRow = new Adw.ActionRow({
+            title: _('Source Code'),
+            subtitle: 'https://github.com/liswitch/liswitch',
+        });
+        const openLinkBtn = new Gtk.Button({
+            icon_name: 'external-link-symbolic',
             valign: Gtk.Align.CENTER,
-            visible: false,
+            css_classes: ['flat'],
+            tooltip_text: _('Open project repository'),
         });
-        statusRow.add_suffix(actionButton);
-
-        // Reset to default button
-        const resetRow = new Adw.ActionRow({
-            title: _('Reset to Default'),
-            subtitle: defaultShortcuts.length > 0
-                ? defaultShortcuts.join(', ')
-                : _('Disabled'),
-        });
-        const resetBtn = new Gtk.Button({
-            label: _('Reset'),
-            valign: Gtk.Align.CENTER,
-        });
-        resetBtn.connect('clicked', () => {
-            this._settings.set_strv(keyName, defaultShortcuts);
-            updateUi();
-        });
-        resetRow.add_suffix(resetBtn);
-        expander.add_row(resetRow);
-
-        const updateUi = () => {
-            const currentArr = this._settings.get_strv(keyName);
-            const currentStr = currentArr.join(', ');
-            entryRow.text = currentStr;
-
-            const allConflicts = checkConflicts(this._settings);
-            const keyConflicts = allConflicts.filter(c => c.hotkeyKey === keyName);
-
-            // Read backup map to check if any conflicting system shortcut was freed
-            let backupMap = {};
+        openLinkBtn.connect('clicked', () => {
             try {
-                const bStr = this._settings.get_string('backup-system-shortcuts');
-                if (bStr)
-                    backupMap = JSON.parse(bStr);
+                Gio.AppInfo.launch_default_for_uri('https://github.com/liswitch/liswitch', null);
             } catch {
-                backupMap = {};
+                // Ignore if in restricted environment
             }
-
-            if (currentArr.length === 0 || !currentArr[0]?.trim()) {
-                expander.subtitle = _('Disabled');
-                statusRow.visible = false;
-                actionButton.visible = false;
-                return;
-            }
-
-            const shortcut = currentArr[0].trim();
-
-            if (isModifierOnlyShortcut(shortcut)) {
-                expander.subtitle = `${shortcut} ⚠️`;
-                statusRow.visible = true;
-                statusRow.title = _('Modifiers-Only Shortcut Warning');
-                statusRow.subtitle = _('GNOME Shell cannot bind pure modifier combinations like Alt+Shift.');
-                actionButton.visible = false;
-                return;
-            }
-
-            if (keyConflicts.length > 0) {
-                const conf = keyConflicts[0];
-                expander.subtitle = `${shortcut} ⚠️ (${_('System Conflict')})`;
-                statusRow.visible = true;
-                statusRow.title = _('Conflict Detected');
-                statusRow.subtitle = _('Shortcut "%s" is assigned to %s (%s).').format(
-                    conf.shortcut,
-                    conf.schemaKey,
-                    conf.schemaId
-                );
-
-                actionButton.visible = true;
-                actionButton.label = _('Free in System');
-                actionButton.css_classes = ['suggested-action'];
-
-                // Disconnect previous clicks
-                actionButton.disconnectByFunc?.();
-                actionButton.connect('clicked', () => {
-                    freeSystemShortcut(conf, this._settings);
-                    this._refreshAllRows();
-                });
-            } else {
-                // Check if this shortcut was previously freed and is stored in backups
-                let freedEntry = null;
-                const normShort = normalizeShortcut(shortcut);
-
-                for (const [, entry] of Object.entries(backupMap)) {
-                    const entryVals = Array.isArray(entry.value) ? entry.value : [entry.value];
-                    if (entryVals.some(v => normalizeShortcut(v) === normShort)) {
-                        freedEntry = entry;
-                        break;
-                    }
-                }
-
-                if (freedEntry) {
-                    expander.subtitle = `${shortcut} (${_('Freed in System')})`;
-                    statusRow.visible = true;
-                    statusRow.title = _('System Shortcut Freed');
-                    statusRow.subtitle = _('Overriding %s (%s).').format(
-                        freedEntry.schemaKey,
-                        freedEntry.schemaId
-                    );
-
-                    actionButton.visible = true;
-                    actionButton.label = _('Restore in System');
-                    actionButton.css_classes = [];
-
-                    actionButton.disconnectByFunc?.();
-                    actionButton.connect('clicked', () => {
-                        restoreSystemShortcut(freedEntry.schemaId, freedEntry.schemaKey, this._settings);
-                        this._refreshAllRows();
-                    });
-                } else {
-                    expander.subtitle = shortcut;
-                    statusRow.visible = false;
-                    actionButton.visible = false;
-                }
-            }
-        };
-
-        entryRow.connect('apply', () => {
-            const val = entryRow.text.trim();
-            this._settings.set_strv(keyName, val ? [val] : []);
-            updateUi();
         });
-
-        this._settings.connect(`changed::${keyName}`, updateUi);
-        this._rowRefreshCallbacks.push(updateUi);
-
-        updateUi();
+        sourceRow.add_suffix(openLinkBtn);
+        linksGroup.add(sourceRow);
     }
 }
 
@@ -578,7 +932,8 @@ export default class LiswitchPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
         window.add(new LiswitchGeneralPage(settings));
-        window.add(new LiswitchMemoryPage(settings));
         window.add(new LiswitchShortcutsPage(settings));
+        window.add(new LiswitchMemoryPage(settings));
+        window.add(new LiswitchAboutPage(settings));
     }
 }

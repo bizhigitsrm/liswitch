@@ -61,6 +61,26 @@
       <description>Array of application IDs or WM_CLASS values that should be ignored by the memory manager.</description>
     </key>
 
+    <!-- === Экранное OSD-уведомление === -->
+    <key name="show-osd" type="b">
+      <default>true</default>
+      <summary>Show OSD pop-up on layout switch</summary>
+      <description>Display a brief centered on-screen display when switching input sources.</description>
+    </key>
+
+    <key name="osd-duration-ms" type="u">
+      <range min="300" max="3000"/>
+      <default>1000</default>
+      <summary>OSD display duration in milliseconds</summary>
+      <description>How long the OSD pop-up stays visible before fading out.</description>
+    </key>
+
+    <key name="osd-show-on-auto-switch" type="b">
+      <default>false</default>
+      <summary>Show OSD on automatic window layout restore</summary>
+      <description>Whether to show OSD notification when layout is restored automatically for a window.</description>
+    </key>
+
     <!-- === Горячие клавиши === -->
     <key name="hotkey-next" type="as">
       <default><![CDATA[['<Control><Alt>space']]]></default>

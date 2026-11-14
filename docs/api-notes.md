@@ -268,6 +268,13 @@ gnome-extensions info liswitch@local
     GNOME Shell сканирует каталоги расширений (`collectFromDatadirs`) только один раз — при старте сессии. Утилита `gnome-extensions install` просто распаковывает zip в целевой каталог, но не уведомляет запущенный Shell (метод `ReloadExtension` в DBus депрекейтнут и возвращает `NOT_SUPPORTED`). В результате свежеустановленное локальное расширение возвращает `Extension doesn't exist` до тех пор, пока пользователь не перезайдёт в сессию (relogin), либо пока расширение не будет загружено в рантайм через Looking Glass (`Main.extensionManager.loadExtension(...)`).
 12. **Конфликт DRM при попытке запуска вложенного Shell в GNOME 51**:
     В Mutter 51 отсутствует вложенный Wayland-клиент. Команда `gnome-shell --wayland` запускает `MetaBackendNative` в режиме DRM/KMS и пытается вызвать `TakeControl()` у `systemd-logind`. Если сессия уже запущена, logind возвращает ошибку `EBUSY: Device or resource busy`. Для тестирования следует использовать headless-раннер `gnome-shell-test-tool` либо отдельный TTY (VT3).
+13. **Ограничения `Main.osdWindowManager` для кастомных OSD-индикаторов**:
+    Системный синглтон `Main.osdWindowManager` (`ui/osdWindow.js`) не подходит для специализированного OSD-индикатора переключения раскладок по следующим причинам:
+    - Жестко зашитый таймаут скрытия: `const HIDE_TIMEOUT = 1500;` (не позволяет управлять длительностью через пользовательскую настройку `osd-duration-ms`).
+    - Жесткое позиционирование внизу экрана: `y_align: Clutter.ActorAlign.END`, в то время как уведомления о смене языка должны центрироваться (`Clutter.ActorAlign.CENTER`).
+    - Отсутствие проверки флага `St.ReducedMotion`: метод `ease()` вызывается безусловно с фиксированной длительностью `FADE_TIME = 100`, нарушая требования доступности GNOME.
+    - Внутренний таймер скрытия `_hideTimeoutId` инкапсулирован внутри системного класса и не может быть безопасно снят расширением при быстром отключении (`disable()`).
+    По этой причине liswitch размещает собственный легковесный контейнер `St.Widget` на `Main.layoutManager.uiGroup` (`Main.uiGroup`) с полным контролем жизненного цикла, анимаций и таймеров.
 
 
 ---

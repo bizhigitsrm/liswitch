@@ -13,3 +13,32 @@
     min-width: 1.8em;
     padding: 0 2px;
 }
+
+/* OSD pop-up styles */
+.liswitch-osd-container {
+    text-align: center;
+}
+
+.liswitch-osd {
+    text-align: center;
+    border-radius: 16px;
+    padding: 16px 28px;
+    spacing: 16px;
+}
+
+.liswitch-osd-icon {
+    icon-size: 36px;
+}
+
+.liswitch-osd-label {
+    font-size: 1.8em;
+    font-weight: bold;
+    text-align: center;
+}
+
+.liswitch-osd-sublabel {
+    font-size: 0.9em;
+    opacity: 0.85;
+    text-align: center;
+}
+

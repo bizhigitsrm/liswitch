@@ -17,6 +17,7 @@ pack: schemas
 		--extra-source=indicator.js \
 		--extra-source=hotkeys.js \
 		--extra-source=windowMemory.js \
+		--extra-source=osd.js \
 		--extra-source=src \
 		--out-dir=. \
 		.
@@ -51,6 +52,8 @@ unit-test:
 	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 gjs -m tests/test-indicator.js
 	XDG_RUNTIME_DIR=/tmp gjs -m tests/test-hotkeys.js
 	XDG_RUNTIME_DIR=/tmp gjs -m tests/test-window-memory.js
+	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 gjs -m tests/test-osd.js
+	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/gnome-shell/girepository-1.0:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 gjs -m tests/test-prefs.js
 
 test: pack unit-test
 	@echo "==> Running smoke test via gnome-shell-test-tool (if DBus session bus is available)..."
@@ -73,6 +76,7 @@ lint: schemas
 		node --check indicator.js ; \
 		node --check hotkeys.js ; \
 		node --check windowMemory.js ; \
+		node --check osd.js ; \
 		node --check src/log.js ; \
 		node --check src/inputSourceService.js ; \
 		node --check src/indicator.js ; \
@@ -80,11 +84,15 @@ lint: schemas
 		node --check src/hotkeyManager.js ; \
 		node --check src/windowMemory.js ; \
 		node --check src/windowMemoryService.js ; \
+		node --check src/osd.js ; \
+		node --check src/osdService.js ; \
 		node --check tests/smoke-test.js ; \
 		node --check tests/test-input-source-service.js ; \
 		node --check tests/test-indicator.js ; \
 		node --check tests/test-hotkeys.js ; \
 		node --check tests/test-window-memory.js ; \
+		node --check tests/test-osd.js ; \
+		node --check tests/test-prefs.js ; \
 		echo "Syntax check OK"; \
 	fi
 
