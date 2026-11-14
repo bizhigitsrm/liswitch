@@ -117,6 +117,222 @@ class LiswitchGeneralPage extends Adw.PreferencesPage {
     }
 }
 
+class LiswitchMemoryPage extends Adw.PreferencesPage {
+    static {
+        GObject.registerClass(this);
+    }
+
+    constructor(settings) {
+        super({
+            title: _('Memory'),
+            icon_name: 'view-restore-symbolic',
+        });
+
+        this._settings = settings;
+        this._desktopSettings = null;
+        try {
+            this._desktopSettings = new Gio.Settings({
+                schema_id: 'org.gnome.desktop.input-sources',
+            });
+        } catch {
+            this._desktopSettings = null;
+        }
+
+        this._buildUi();
+    }
+
+    _buildUi() {
+        // --- System Conflict Warning Group ---
+        const systemConflictGroup = new Adw.PreferencesGroup({
+            title: _('System Setting Conflict'),
+            description: _('Notice regarding GNOME desktop input settings'),
+        });
+        this.add(systemConflictGroup);
+
+        const warningRow = new Adw.ActionRow({
+            title: _('System "Per-Window" Switching Active ⚠️'),
+            subtitle: _(
+                'GNOME Settings has "Switch input sources individually for each window" enabled. ' +
+                'To avoid duplicate switching conflicts, liswitch layout memory is suspended.'
+            ),
+        });
+        systemConflictGroup.add(warningRow);
+
+        const disableBtn = new Gtk.Button({
+            label: _('Disable in System'),
+            valign: Gtk.Align.CENTER,
+            css_classes: ['suggested-action'],
+        });
+        disableBtn.connect('clicked', () => {
+            if (this._desktopSettings) {
+                this._desktopSettings.set_boolean('per-window', false);
+                updateWarningState();
+            }
+        });
+        warningRow.add_suffix(disableBtn);
+
+        const updateWarningState = () => {
+            let isSystemActive = false;
+            try {
+                isSystemActive = this._desktopSettings?.get_boolean('per-window') ?? false;
+            } catch {
+                isSystemActive = false;
+            }
+            systemConflictGroup.visible = isSystemActive;
+        };
+
+        if (this._desktopSettings)
+            this._desktopSettings.connect('changed::per-window', updateWarningState);
+        updateWarningState();
+
+        // --- Memory Mode Group ---
+        const modeGroup = new Adw.PreferencesGroup({
+            title: _('Layout Memory Mode'),
+            description: _('Remember and restore keyboard layout when switching between windows'),
+        });
+        this.add(modeGroup);
+
+        const modeModel = new Gtk.StringList();
+        modeModel.append(_('Per-Application (recommended)'));
+        modeModel.append(_('Per-Window'));
+        modeModel.append(_('Disabled'));
+        const modeValues = ['per-app', 'per-window', 'off'];
+
+        const modeRow = new Adw.ComboRow({
+            title: _('Memory Mode'),
+            subtitle: _('Choose how layouts are tracked across applications and windows'),
+            model: modeModel,
+        });
+        modeGroup.add(modeRow);
+
+        const currentMode = this._settings.get_string('memory-mode');
+        const modeIdx = modeValues.indexOf(currentMode);
+        modeRow.selected = modeIdx >= 0 ? modeIdx : 0;
+
+        modeRow.connect('notify::selected', () => {
+            const idx = modeRow.selected;
+            if (idx >= 0 && idx < modeValues.length)
+                this._settings.set_string('memory-mode', modeValues[idx]);
+        });
+
+        this._settings.connect('changed::memory-mode', () => {
+            const val = this._settings.get_string('memory-mode');
+            const i = modeValues.indexOf(val);
+            if (i >= 0 && modeRow.selected !== i)
+                modeRow.selected = i;
+        });
+
+        const defaultLayoutModel = new Gtk.StringList();
+        defaultLayoutModel.append(_('Keep active layout'));
+        defaultLayoutModel.append(_('Reset to first layout'));
+        const defaultLayoutValues = ['keep', 'first'];
+
+        const defaultRow = new Adw.ComboRow({
+            title: _('New Windows Initial Layout'),
+            subtitle: _('Action when focusing a window that has no saved layout'),
+            model: defaultLayoutModel,
+        });
+        modeGroup.add(defaultRow);
+
+        const currentDefault = this._settings.get_string('default-layout-mode');
+        const defaultIdx = defaultLayoutValues.indexOf(currentDefault);
+        defaultRow.selected = defaultIdx >= 0 ? defaultIdx : 0;
+
+        defaultRow.connect('notify::selected', () => {
+            const idx = defaultRow.selected;
+            if (idx >= 0 && idx < defaultLayoutValues.length)
+                this._settings.set_string('default-layout-mode', defaultLayoutValues[idx]);
+        });
+
+        this._settings.connect('changed::default-layout-mode', () => {
+            const val = this._settings.get_string('default-layout-mode');
+            const i = defaultLayoutValues.indexOf(val);
+            if (i >= 0 && defaultRow.selected !== i)
+                defaultRow.selected = i;
+        });
+
+        // --- Excluded Applications Group ---
+        const excludedGroup = new Adw.PreferencesGroup({
+            title: _('Excluded Applications'),
+            description: _('Applications that should be ignored by layout memory'),
+        });
+        this.add(excludedGroup);
+
+        const addEntryRow = new Adw.EntryRow({
+            title: _('Add application ID (e.g. org.gnome.Console)'),
+            show_apply_button: true,
+        });
+        excludedGroup.add(addEntryRow);
+
+        const excludedExpander = new Adw.ExpanderRow({
+            title: _('Excluded List'),
+            subtitle: '',
+        });
+        excludedGroup.add(excludedExpander);
+
+        const itemRows = [];
+
+        const refreshExcludedList = () => {
+            for (const r of itemRows) {
+                try {
+                    excludedExpander.remove(r);
+                } catch {
+                    // Ignore
+                }
+            }
+            itemRows.length = 0;
+
+            const list = this._settings.get_strv('memory-excluded-apps');
+            if (list.length === 0) {
+                excludedExpander.subtitle = _('No applications excluded');
+                return;
+            }
+
+            excludedExpander.subtitle = _('%d application(s) excluded').format(list.length);
+
+            for (const app of list) {
+                const row = new Adw.ActionRow({
+                    title: app,
+                });
+
+                const delBtn = new Gtk.Button({
+                    icon_name: 'user-trash-symbolic',
+                    valign: Gtk.Align.CENTER,
+                    css_classes: ['flat'],
+                    tooltip_text: _('Remove from excluded list'),
+                });
+                delBtn.connect('clicked', () => {
+                    const currentList = this._settings.get_strv('memory-excluded-apps');
+                    const updated = currentList.filter(item => item !== app);
+                    this._settings.set_strv('memory-excluded-apps', updated);
+                    refreshExcludedList();
+                });
+                row.add_suffix(delBtn);
+
+                excludedExpander.add_row(row);
+                itemRows.push(row);
+            }
+        };
+
+        addEntryRow.connect('apply', () => {
+            const val = addEntryRow.text.trim();
+            if (!val)
+                return;
+
+            const list = this._settings.get_strv('memory-excluded-apps');
+            if (!list.includes(val)) {
+                list.push(val);
+                this._settings.set_strv('memory-excluded-apps', list);
+            }
+            addEntryRow.text = '';
+            refreshExcludedList();
+        });
+
+        this._settings.connect('changed::memory-excluded-apps', refreshExcludedList);
+        refreshExcludedList();
+    }
+}
+
 class LiswitchShortcutsPage extends Adw.PreferencesPage {
     static {
         GObject.registerClass(this);
@@ -362,6 +578,7 @@ export default class LiswitchPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
         window.add(new LiswitchGeneralPage(settings));
+        window.add(new LiswitchMemoryPage(settings));
         window.add(new LiswitchShortcutsPage(settings));
     }
 }

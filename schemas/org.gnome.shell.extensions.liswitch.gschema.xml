@@ -33,6 +33,34 @@
       <description>Whether scrolling the mouse wheel over the indicator switches to next/previous layout.</description>
     </key>
 
+    <!-- === Память раскладок для окон/приложений === -->
+    <key name="memory-mode" type="s">
+      <choices>
+        <choice value="off"/>
+        <choice value="per-app"/>
+        <choice value="per-window"/>
+      </choices>
+      <default>'per-app'</default>
+      <summary>Layout memory persistence mode</summary>
+      <description>Mode of remembering layouts: 'off' (disabled), 'per-app' (per application), 'per-window' (per individual window).</description>
+    </key>
+
+    <key name="default-layout-mode" type="s">
+      <choices>
+        <choice value="keep"/>
+        <choice value="first"/>
+      </choices>
+      <default>'keep'</default>
+      <summary>Default layout for new windows</summary>
+      <description>Action for newly focused windows without prior history: 'keep' (preserve active layout), 'first' (reset to first configured layout).</description>
+    </key>
+
+    <key name="memory-excluded-apps" type="as">
+      <default>[]</default>
+      <summary>List of applications excluded from layout memory</summary>
+      <description>Array of application IDs or WM_CLASS values that should be ignored by the memory manager.</description>
+    </key>
+
     <!-- === Горячие клавиши === -->
     <key name="hotkey-next" type="as">
       <default><![CDATA[['<Control><Alt>space']]]></default>

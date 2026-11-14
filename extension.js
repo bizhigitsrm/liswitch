@@ -6,6 +6,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {InputSourceService} from './src/inputSourceService.js';
 import {Indicator} from './src/indicator.js';
 import {HotkeyManager} from './src/hotkeys.js';
+import {WindowMemory} from './src/windowMemory.js';
 import * as Log from './src/log.js';
 
 export default class LiswitchExtension extends Extension {
@@ -25,6 +26,9 @@ export default class LiswitchExtension extends Extension {
         } else {
             Log.warn('InputSourceService is unavailable (no input sources configured or manager unavailable)');
         }
+
+        this._windowMemory = new WindowMemory(this._settings, this._inputSourceService);
+        this._windowMemory.enable();
 
         this._hotkeyManager = new HotkeyManager(this._settings, this._inputSourceService);
         this._hotkeyManager.enable();
@@ -85,6 +89,11 @@ export default class LiswitchExtension extends Extension {
             this._hotkeyManager = null;
         }
 
+        if (this._windowMemory) {
+            this._windowMemory.destroy();
+            this._windowMemory = null;
+        }
+
         if (this._inputSourceService) {
             this._inputSourceService.destroy();
             this._inputSourceService = null;
@@ -101,6 +110,24 @@ export default class LiswitchExtension extends Extension {
      */
     get inputSourceService() {
         return this._inputSourceService;
+    }
+
+    /**
+     * Public accessor for the layout memory service (accessible from Looking Glass or test harness)
+     *
+     * @returns {WindowMemory|null}
+     */
+    get windowMemory() {
+        return this._windowMemory;
+    }
+
+    /**
+     * Public alias accessor for the layout memory service
+     *
+     * @returns {WindowMemory|null}
+     */
+    get windowMemoryService() {
+        return this._windowMemory;
     }
 
     /**

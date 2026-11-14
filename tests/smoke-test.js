@@ -40,9 +40,14 @@ export async function run() {
     if (!hotkeyManager)
         throw new Error('hotkeyManager is not initialized on extension!');
 
+    const windowMemory = extObj.windowMemory;
+    if (!windowMemory)
+        throw new Error('windowMemory is not initialized on extension!');
+
     console.log(`[TEST] inputSourceService available: ${service.isAvailable}, sources: ${service.getSources().length}, current: ${service.getCurrentIndex()}`);
     console.log(`[TEST] indicator label: "${indicator.label?.text ?? ''}", statusArea registered: ${Boolean(Main.panel.statusArea[uuid])}`);
     console.log(`[TEST] hotkeyManager bound hotkeys: ${Array.from(hotkeyManager.boundHotkeys).join(', ')}`);
+    console.log(`[TEST] windowMemory mode: ${windowMemory.memoryMode}, system per-window: ${windowMemory.isSystemPerWindowActive}`);
 
     // Verify default hotkeys are bound in window manager
     if (!hotkeyManager.boundHotkeys.has('hotkey-next'))
@@ -63,6 +68,15 @@ export async function run() {
         if (hotkeyManager.boundHotkeys.has('hotkey-switch-1'))
             throw new Error('hotkey-switch-1 was not dynamically unregistered after GSettings reset!');
         console.log('[TEST] Dynamic GSettings unbind verified: hotkey-switch-1 removed live');
+
+        // Test dynamic memory-mode change
+        extSettings.set_string('memory-mode', 'per-window');
+        if (windowMemory.memoryMode !== 'per-window')
+            throw new Error('memory-mode was not dynamically updated!');
+        extSettings.set_string('memory-mode', 'per-app');
+        if (windowMemory.memoryMode !== 'per-app')
+            throw new Error('memory-mode was not dynamically restored!');
+        console.log('[TEST] Dynamic GSettings memory-mode verified');
     }
 
     // Test basic operations in headless session
@@ -96,6 +110,9 @@ export async function run() {
 
         if (!ext.stateObj?.hotkeyManager)
             throw new Error(`Iteration ${i}: hotkeyManager missing after re-enable`);
+
+        if (!ext.stateObj?.windowMemory)
+            throw new Error(`Iteration ${i}: windowMemory missing after re-enable`);
 
         if (!ext.stateObj?.hotkeyManager.boundHotkeys.has('hotkey-next'))
             throw new Error(`Iteration ${i}: hotkey-next missing after re-enable`);
