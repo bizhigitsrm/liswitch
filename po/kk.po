@@ -4,7 +4,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: liswitch 51.0\n"
+"Project-Id-Version: liswitch 1.0.0\n"
 "Report-Msgid-Bugs-To: https://github.com/liswitch/liswitch/issues\n"
 "POT-Creation-Date: 2026-11-14 21:22+0500\n"
 "PO-Revision-Date: 2026-11-14 22:00+0500\n"
@@ -15,364 +15,583 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: prefs.js:44 prefs.js:402 prefs.js:530 prefs.js:683
-msgid "Disabled"
-msgstr "Сөндірулі"
-
-#: prefs.js:68
-msgid "General"
-msgstr "Жалпы"
-
-#: prefs.js:76
-msgid "Panel Indicator"
-msgstr "Панельдегі индикатор"
-
-#: prefs.js:77
-msgid "Configure the layout indicator in the top panel"
-msgstr "Жоғарғы панельдегі пернетақта индикаторын баптау"
-
-#: prefs.js:82
-msgid "Show Indicator"
-msgstr "Индикаторды көрсету"
-
-#: prefs.js:83
-msgid "Display the keyboard layout indicator in the top panel"
-msgstr "Жоғарғы панельде пернетақта тілі индикаторын көрсету"
-
-#: prefs.js:94
-msgid "Hide System Indicator"
-msgstr "Жүйелік индикаторды жасыру"
-
-#: prefs.js:95
-msgid "Hide standard GNOME keyboard indicator to prevent duplicates"
-msgstr "Қайталануды болдырмау үшін GNOME стандартты индикаторын жасыру"
-
-#: prefs.js:106
-msgid "Scroll to Switch Layout"
-msgstr "Тінтуір дөңгелегімен ауыстыру"
-
-#: prefs.js:107
-msgid "Switch layouts by scrolling the mouse wheel over the indicator"
-msgstr "Индикатор үстінде тінтуір дөңгелегін айналдыру арқылы тілді ауыстыру"
-
-#: prefs.js:118
-msgid "Short (uppercase, e.g. EN)"
-msgstr "Қысқаша (бас әріптер, мыс. EN)"
-
-#: prefs.js:119
-msgid "Full Name (e.g. English)"
-msgstr "Толық атауы (мыс. English)"
-
-#: prefs.js:120
-msgid "Lowercase (e.g. en)"
-msgstr "Кіші әріптер (мыс. en)"
-
-#: prefs.js:125
-msgid "Label Format"
-msgstr "Белгі пішімі"
-
-#: prefs.js:126
-msgid "Choose how layout names appear in the panel"
-msgstr "Панельде пернетақта тілінің қалай көрсетілетінін таңдаңыз"
-
-#: prefs.js:162
-msgid "On-Screen Display (OSD)"
-msgstr "Экрандық хабарлама (OSD)"
-
-#: prefs.js:163
-msgid "Visual notification popup when switching layouts"
-msgstr "Тілді ауыстырған кезде қалқымалы экрандық хабарлама"
-
-#: prefs.js:168
-msgid "Show OSD Pop-up"
-msgstr "OSD хабарламасын көрсету"
-
-#: prefs.js:169
-msgid "Display a brief centered notification when layout changes"
-msgstr "Тіл ауысқан кезде экран ортасында қысқаша хабарлама көрсету"
-
-#: prefs.js:183
-msgid "OSD Duration"
-msgstr "OSD ұзақтығы"
-
-#: prefs.js:184
-msgid "How long the OSD stays visible (in milliseconds)"
-msgstr "Экрандық хабарламаның көріну ұзақтығы (миллисекундпен)"
-
-#: prefs.js:211
-msgid "Show OSD on Window Restore"
-msgstr "Терезені қалпына келтіргенде OSD көрсету"
-
-#: prefs.js:212
-msgid ""
-"Display notification when layout is restored automatically by window memory"
-msgstr "Терезе жады тілді автоматты түрде қалпына келтіргенде хабарлама көрсету"
-
-#: prefs.js:240
-msgid "Diagnostics"
-msgstr "Диагностика"
-
-#: prefs.js:241
-msgid "Options for troubleshooting liswitch"
-msgstr "liswitch жұмысын тексеру және баптау параметрлері"
-
-#: prefs.js:246
-msgid "Debug Logging"
-msgstr "Жөндеу жазбалары"
-
-#: prefs.js:247
-msgid "Output detailed diagnostic messages to the system journal"
-msgstr "Жүйелік журналға толық диагностикалық хабарламаларды жазу"
-
-#: prefs.js:273
-msgid "Shortcuts"
-msgstr "Пернелер тіркесімдері"
-
-#: prefs.js:303
-msgid "Layout Switching Shortcuts"
-msgstr "Тіл ауыстыру тіркесімдері"
-
-#: prefs.js:304
-msgid "Configure keybindings to switch between configured input sources"
-msgstr "Енгізу көздері арасында ауысу үшін пернелер тіркесімдерін баптау"
-
-#: prefs.js:311
+#: prefs.js:268 prefs.js:1020
 msgid "Next Layout"
 msgstr "Келесі тіл"
 
-#: prefs.js:312
-msgid "Cycle forward through available input sources"
-msgstr "Қолжетімді тілдер бойынша алға қарай ауысу"
-
-#: prefs.js:319
+#: prefs.js:269 prefs.js:1027
 msgid "Previous Layout"
 msgstr "Алдыңғы тіл"
 
-#: prefs.js:320
-msgid "Cycle backward through available input sources"
-msgstr "Қолжетімді тілдер бойынша артқа қарай ауысу"
-
-#: prefs.js:326
-msgid "Direct Layout Selection"
-msgstr "Тілді тікелей таңдау"
-
-#: prefs.js:327
-msgid "Jump directly to a specific layout by number (1 to 4)"
-msgstr "Нөмірі бойынша белгілі бір тілге тікелей өту (1-ден 4-ке дейін)"
-
-#: prefs.js:335
+#: prefs.js:270 prefs.js:271 prefs.js:272 prefs.js:273 prefs.js:1045
 #, javascript-format
 msgid "Switch to Layout %d"
 msgstr "%d тіліне ауысу"
 
-#: prefs.js:336
-#, javascript-format
-msgid "Directly activate layout at index %d"
-msgstr "%d индексіндегі тілді тікелей белсендіру"
+#: prefs.js:274 prefs.js:2086
+msgid "Convert Last Word"
+msgstr "Соңғы сөзді түрлендіру"
 
-#: prefs.js:343
-msgid "Modifier-Only Shortcuts Note"
-msgstr "Тек модификаторлық пернелер тіркесімі туралы ескертпе"
+#: prefs.js:316 prefs.js:437 prefs.js:487 prefs.js:1200 prefs.js:1332
+msgid "Disabled"
+msgstr "Сөндірулі"
 
-#: prefs.js:345
-msgid ""
-"GNOME Shell keybindings require a non-modifier key (like Space, Letter, or "
-"Digit). Pure modifier combinations (such as Alt+Shift or Caps Lock) cannot "
-"be assigned via extension keybindings; they are managed at the system XKB "
-"level in Settings → Keyboard → Special Character Entry or GNOME Tweaks."
-msgstr "GNOME Shell пернелер тіркесімі модификатор емес пернені қажет етеді (бос орын, әріп немесе сан). Тек модификаторлардан тұратын тіркесімдерді (мысалы, Alt+Shift немесе Caps Lock) кеңейтім арқылы тағайындау мүмкін емес; олар жүйелік XKB деңгейінде Баптаулар → Пернетақта бөлімінде басқарылады."
-
-#: prefs.js:401
+#: prefs.js:436
 #, javascript-format
 msgid "Reset to default shortcut (%s)"
 msgstr "Әдепкі тіркесімге қайтару (%s)"
 
-#: prefs.js:450
-msgid "Press keys…"
-msgstr "Пернелерді басыңыз…"
-
-#: prefs.js:451
-msgid "Press keys now — Escape to cancel, Backspace to disable"
-msgstr "Пернелерді қазір басыңыз — бас тарту үшін Escape, сөндіру үшін Backspace"
-
-#: prefs.js:485
-#, javascript-format
-msgid "Shortcut \"%s\" is already assigned to \"%s\"."
-msgstr "\"%s\" тіркесімі әлдеқашан \"%s\" әрекетіне тағайындалған."
-
-#: prefs.js:536
+#: prefs.js:493
 #, javascript-format
 msgid "Modifier-only shortcut cannot be bound in GNOME Shell: %s"
 msgstr "Тек модификаторлардан тұратын тіркесім GNOME Shell-де қолданылмайды: %s"
 
-#: prefs.js:543
+#: prefs.js:500
 #, javascript-format
 msgid "Conflict: shortcut \"%s\" is assigned to %s (%s)"
 msgstr "Қақтығыс: \"%s\" тіркесімі %s (%s) ішінде тағайындалған"
 
-#: prefs.js:550
+#: prefs.js:507
 msgid "Free in System"
 msgstr "Жүйеде босату"
 
-#: prefs.js:572
+#: prefs.js:525
 #, javascript-format
 msgid "Overriding system shortcut: %s (%s)"
 msgstr "Жүйелік тіркесімді қайта анықтау: %s (%s)"
 
-#: prefs.js:578
+#: prefs.js:531
 msgid "Restore in System"
 msgstr "Жүйеде қалпына келтіру"
 
-#: prefs.js:612
+#: prefs.js:586
+msgid "Press keys…"
+msgstr "Пернелерді басыңыз…"
+
+#: prefs.js:587
+msgid "Press keys now — Escape to cancel, Backspace to disable"
+msgstr "Пернелерді қазір басыңыз — бас тарту үшін Escape, сөндіру үшін Backspace"
+
+#: prefs.js:630
+#, javascript-format
+msgid "Shortcut \"%s\" is already assigned to \"%s\"."
+msgstr "\"%s\" тіркесімі әлдеқашан \"%s\" әрекетіне тағайындалған."
+
+#: prefs.js:681
+msgid "General"
+msgstr "Жалпы"
+
+#: prefs.js:691
+msgid "Panel Indicator"
+msgstr "Панельдегі индикатор"
+
+#: prefs.js:692
+msgid "Configure the layout indicator in the top panel"
+msgstr "Жоғарғы панельдегі пернетақта индикаторын баптау"
+
+#: prefs.js:697
+msgid "Show Indicator"
+msgstr "Индикаторды көрсету"
+
+#: prefs.js:698
+msgid "Display the keyboard layout indicator in the top panel"
+msgstr "Жоғарғы панельде пернетақта тілі индикаторын көрсету"
+
+#: prefs.js:709
+msgid "Hide System Indicator"
+msgstr "Жүйелік индикаторды жасыру"
+
+#: prefs.js:710
+msgid "Hide standard GNOME keyboard indicator to prevent duplicates"
+msgstr "Қайталануды болдырмау үшін GNOME стандартты индикаторын жасыру"
+
+#: prefs.js:721
+msgid "Scroll to Switch Layout"
+msgstr "Тінтуір дөңгелегімен ауыстыру"
+
+#: prefs.js:722
+msgid "Switch layouts by scrolling the mouse wheel over the indicator"
+msgstr "Индикатор үстінде тінтуір дөңгелегін айналдыру арқылы тілді ауыстыру"
+
+#: prefs.js:733
+msgid "Short (uppercase, e.g. EN)"
+msgstr "Қысқаша (бас әріптер, мыс. EN)"
+
+#: prefs.js:734
+msgid "Full Name (e.g. English)"
+msgstr "Толық атауы (мыс. English)"
+
+#: prefs.js:735
+msgid "Lowercase (e.g. en)"
+msgstr "Кіші әріптер (мыс. en)"
+
+#: prefs.js:740
+msgid "Label Format"
+msgstr "Белгі пішімі"
+
+#: prefs.js:741
+msgid "Choose how layout names appear in the panel"
+msgstr "Панельде пернетақта тілінің қалай көрсетілетінін таңдаңыз"
+
+#: prefs.js:757
+msgid "Next to System Indicator"
+msgstr "Жүйелік индикатордың жанында"
+
+#: prefs.js:758
+msgid "Right Panel Box"
+msgstr "Панельдің оң жағы"
+
+#: prefs.js:759
+msgid "Center Panel Box"
+msgstr "Панельдің ортасы"
+
+#: prefs.js:760
+msgid "Left Panel Box"
+msgstr "Панельдің сол жағы"
+
+#: prefs.js:765
+msgid "Indicator Position"
+msgstr "Индикатор орны"
+
+#: prefs.js:766
+msgid "Choose where the layout indicator appears in the top panel"
+msgstr "Жоғарғы панельде тіл индикаторының орналасуын таңдаңыз"
+
+#: prefs.js:817
+msgid "On-Screen Display (OSD)"
+msgstr "Экрандық хабарлама (OSD)"
+
+#: prefs.js:818
+msgid "Visual notification popup when switching layouts"
+msgstr "Тілді ауыстырған кезде қалқымалы экрандық хабарлама"
+
+#: prefs.js:823
+msgid "Show OSD Pop-up"
+msgstr "OSD хабарламасын көрсету"
+
+#: prefs.js:824
+msgid "Display a brief notification when layout changes"
+msgstr "Тіл ауысқан кезде қысқаша хабарлама көрсету"
+
+#: prefs.js:838
+msgid "Center of Screen"
+msgstr "Экран ортасында"
+
+#: prefs.js:839
+msgid "Top of Screen"
+msgstr "Экранның жоғарғы жағында"
+
+#: prefs.js:840
+msgid "Bottom of Screen"
+msgstr "Экранның төменгі жағында"
+
+#: prefs.js:845
+msgid "OSD Position"
+msgstr "OSD орны"
+
+#: prefs.js:846
+msgid "Vertical placement of the OSD notification on the active monitor"
+msgstr "Белсенді монитордағы қалқымалы хабарламаның тік орналасуы"
+
+#: prefs.js:871
+msgid "OSD Duration"
+msgstr "OSD ұзақтығы"
+
+#: prefs.js:872
+msgid "How long the OSD stays visible (in milliseconds)"
+msgstr "Экрандық хабарламаның көріну ұзақтығы (миллисекундпен)"
+
+#: prefs.js:899
+msgid "Show OSD on Window Restore"
+msgstr "Терезені қалпына келтіргенде OSD көрсету"
+
+#: prefs.js:900
+msgid ""
+"Display notification when layout is restored automatically by window memory"
+msgstr "Терезе жады тілді автоматты түрде қалпына келтіргенде хабарлама көрсету"
+
+#: prefs.js:934
+msgid "Diagnostics"
+msgstr "Диагностика"
+
+#: prefs.js:935
+msgid "Options for troubleshooting liswitch"
+msgstr "liswitch жұмысын тексеру және баптау параметрлері"
+
+#: prefs.js:940
+msgid "Debug Logging"
+msgstr "Жөндеу жазбалары"
+
+#: prefs.js:941
+msgid "Output detailed diagnostic messages to the system journal"
+msgstr "Жүйелік журналға толық диагностикалық хабарламаларды жазу"
+
+#: prefs.js:980
+msgid "Shortcuts"
+msgstr "Пернелер тіркесімдері"
+
+#: prefs.js:1013
+msgid "Layout Switching Shortcuts"
+msgstr "Тіл ауыстыру тіркесімдері"
+
+#: prefs.js:1014
+msgid "Configure keybindings to switch between configured input sources"
+msgstr "Енгізу көздері арасында ауысу үшін пернелер тіркесімдерін баптау"
+
+#: prefs.js:1021
+msgid "Cycle forward through available input sources"
+msgstr "Қолжетімді тілдер бойынша алға қарай ауысу"
+
+#: prefs.js:1028
+msgid "Cycle backward through available input sources"
+msgstr "Қолжетімді тілдер бойынша артқа қарай ауысу"
+
+#: prefs.js:1037
+msgid "Direct Layout Selection"
+msgstr "Тілді тікелей таңдау"
+
+#: prefs.js:1038
+msgid "Jump directly to a specific layout by number (1 to 4)"
+msgstr "Нөмірі бойынша белгілі бір тілге тікелей өту (1-ден 4-ке дейін)"
+
+#: prefs.js:1046
+#, javascript-format
+msgid "Directly activate layout at index %d"
+msgstr "%d индексіндегі тілді тікелей белсендіру"
+
+#: prefs.js:1057
+msgid "Modifier-Only Switching (System XKB)"
+msgstr "Тек модификаторлармен ауыстыру (жүйелік XKB)"
+
+#: prefs.js:1059
+msgid ""
+"GNOME Shell keybindings require a non-modifier key. Pure modifier "
+"combinations are configured at the system XKB level via "
+"org.gnome.desktop.input-sources xkb-options (other XKB options such as "
+"compose:* or lv3:* are preserved)."
+msgstr "GNOME Shell пернелер тіркесімі модификатор емес пернені қажет етеді. Тек модификаторлардан тұратын тіркесімдер жүйелік XKB деңгейінде org.gnome.desktop.input-sources xkb-options арқылы бапталады (compose:* немесе lv3:* сияқты басқа XKB параметрлері сақталады)."
+
+#: prefs.js:1067
+msgid "None (system default)"
+msgstr "Жоқ (жүйелік әдепкі мән)"
+
+#: prefs.js:1068
+msgid "Alt+Shift (grp:alt_shift_toggle)"
+msgstr "Alt+Shift (grp:alt_shift_toggle)"
+
+#: prefs.js:1069
+msgid "Ctrl+Shift (grp:ctrl_shift_toggle)"
+msgstr "Ctrl+Shift (grp:ctrl_shift_toggle)"
+
+#: prefs.js:1070
+msgid "Caps Lock (grp:caps_toggle)"
+msgstr "Caps Lock (grp:caps_toggle)"
+
+#: prefs.js:1077
+msgid "XKB Modifier Toggle"
+msgstr "XKB модификаторлы ауыстырғышы"
+
+#: prefs.js:1078 prefs.js:1152
+msgid "Configure system XKB modifier-only layout switching"
+msgstr "Жүйелік XKB деңгейінде тек модификаторлармен тіл ауыстыруды баптау"
+
+#: prefs.js:1088
+msgid "Win+Space (System switch-input-source)"
+msgstr "Win+Space (жүйелік switch-input-source)"
+
+#: prefs.js:1089
+msgid "Indicates the built-in GNOME input-source switching shortcut"
+msgstr "Кіріктірілген GNOME енгізу көзін ауыстыру тіркесімінің күйін көрсетеді"
+
+#: prefs.js:1105
+msgid "System schema org.gnome.desktop.input-sources is unavailable"
+msgstr "org.gnome.desktop.input-sources жүйелік сызбасы қолжетімсіз"
+
+#: prefs.js:1125
+#, javascript-format
+msgid "Custom (%s)"
+msgstr "Пайдаланушы (%s)"
+
+#: prefs.js:1150
+#, javascript-format
+msgid "Preserved XKB options: %s"
+msgstr "Сақталған XKB параметрлері: %s"
+
+#: prefs.js:1161
+msgid "System schema org.gnome.desktop.wm.keybindings is unavailable"
+msgstr "org.gnome.desktop.wm.keybindings жүйелік сызбасы қолжетімсіз"
+
+#: prefs.js:1162
+msgid "Unavailable"
+msgstr "Қолжетімсіз"
+
+#: prefs.js:1169
+#, javascript-format
+msgid "Active in system keybindings: %s"
+msgstr "Жүйелік тіркесімдерде белсенді: %s"
+
+#: prefs.js:1170
+msgid "Active"
+msgstr "Белсенді"
+
+#: prefs.js:1177
+#, javascript-format
+msgid "Current system switch-input-source: %s (Win+Space not assigned)"
+msgstr "Ағымдағы жүйелік switch-input-source: %s (Win+Space тағайындалмаған)"
+
+#: prefs.js:1178
+msgid "Custom"
+msgstr "Өзгеше"
+
+#: prefs.js:1195
+msgid "Overridden by a Liswitch shortcut above"
+msgstr "Жоғарыдағы Liswitch тіркесімімен қайта анықталған"
+
+#: prefs.js:1196
+msgid "Overridden"
+msgstr "Қайта анықталған"
+
+#: prefs.js:1199
+msgid "Disabled in system keybindings"
+msgstr "Жүйелік тіркесімдерде сөндірулі"
+
+#: prefs.js:1259
 msgid "Memory"
 msgstr "Есте сақтау"
 
-#: prefs.js:632
+#: prefs.js:1281
 msgid "System Setting Conflict"
 msgstr "Жүйелік баптаулармен қақтығыс"
 
-#: prefs.js:633
+#: prefs.js:1282
 msgid "Notice regarding GNOME desktop input settings"
 msgstr "GNOME жұмыс үстелінің енгізу баптаулары туралы ескерту"
 
-#: prefs.js:638
+#: prefs.js:1287
 msgid "System \"Per-Window\" Switching Active ⚠️"
 msgstr "Жүйеде \"әр терезе үшін\" ауыстыру қосулы ⚠️"
 
-#: prefs.js:640
+#: prefs.js:1289
 msgid ""
 "GNOME Settings has \"Switch input sources individually for each window\" "
 "enabled. To avoid duplicate switching conflicts, liswitch layout memory is "
 "suspended."
 msgstr "GNOME баптауларында \"Әрбір терезе үшін бөлек енгізу көздерін ауыстыру\" қосулы. Қақтығыстарды болдырмау үшін liswitch жады тоқтатылды."
 
-#: prefs.js:647
+#: prefs.js:1296
 msgid "Disable in System"
 msgstr "Жүйеде сөндіру"
 
-#: prefs.js:675
+#: prefs.js:1324
 msgid "Layout Memory Mode"
 msgstr "Тілді есте сақтау режимі"
 
-#: prefs.js:676
+#: prefs.js:1325
 msgid "Remember and restore keyboard layout when switching between windows"
 msgstr "Терезелер арасында ауысқан кезде пернетақта тілін есте сақтау және қалпына келтіру"
 
-#: prefs.js:681
+#: prefs.js:1330
 msgid "Per-Application (recommended)"
 msgstr "Әр қолданба үшін (ұсынылады)"
 
-#: prefs.js:682
+#: prefs.js:1331
 msgid "Per-Window"
 msgstr "Әр терезе үшін"
 
-#: prefs.js:687
+#: prefs.js:1336
 msgid "Memory Mode"
 msgstr "Есте сақтау режимі"
 
-#: prefs.js:688
+#: prefs.js:1337
 msgid "Choose how layouts are tracked across applications and windows"
 msgstr "Қолданбалар мен терезелер бойынша тілді қадағалау тәсілін таңдаңыз"
 
-#: prefs.js:711
+#: prefs.js:1360
 msgid "Keep active layout"
 msgstr "Ағымдағы тілді сақтау"
 
-#: prefs.js:712
+#: prefs.js:1361
 msgid "Reset to first layout"
 msgstr "Бірінші тілге қайтару"
 
-#: prefs.js:716
+#: prefs.js:1365
 msgid "New Windows Initial Layout"
 msgstr "Жаңа терезелер үшін бастапқы тіл"
 
-#: prefs.js:717
+#: prefs.js:1366
 msgid "Action when focusing a window that has no saved layout"
 msgstr "Сақталған тілі жоқ терезеге өткен кездегі әрекет"
 
-#: prefs.js:741
+#: prefs.js:1455
+msgid "Search applications by name or ID…"
+msgstr "Қолданбаларды атауы немесе ID бойынша іздеу…"
+
+#: prefs.js:1465
+msgid "No matching applications found"
+msgstr "Сәйкес қолданбалар табылмады"
+
+#: prefs.js:1486
+msgid "Added"
+msgstr "Қосылды"
+
+#: prefs.js:1553
+msgid "Per-App Starting Layout"
+msgstr "Қолданбалар үшін бастапқы тіл"
+
+#: prefs.js:1554
+msgid ""
+"Force a specific layout when an application is focused for the first time"
+msgstr "Қолданбаға алғаш рет өткен кезде таңдалған тілді мәжбүрлеп қосу"
+
+#: prefs.js:1559
+msgid "Application ID (e.g. org.gnome.Console)"
+msgstr "Қолданба ID (мыс. org.gnome.Console)"
+
+#: prefs.js:1568 prefs.js:1767
+msgid "Choose from installed applications"
+msgstr "Орнатылған қолданбалардан таңдау"
+
+#: prefs.js:1573
+msgid "Starting Layout"
+msgstr "Бастапқы тіл"
+
+#: prefs.js:1574
+msgid "Layout activated on first focus of this application"
+msgstr "Осы қолданбаға алғаш рет өткенде қосылатын тіл"
+
+#: prefs.js:1579
+msgid "Add"
+msgstr "Қосу"
+
+#: prefs.js:1582
+msgid "Assign starting layout for this application"
+msgstr "Осы қолданба үшін бастапқы тілді тағайындау"
+
+#: prefs.js:1587
+msgid "Configured Rules"
+msgstr "Бапталған ережелер"
+
+#: prefs.js:1613
+msgid "No per-app starting layouts configured"
+msgstr "Қолданбалар үшін бастапқы тілдер бапталмаған"
+
+#: prefs.js:1618
+#, javascript-format
+msgid "%d application rule(s) configured"
+msgstr "%d қолданба ережесі бапталды"
+
+#: prefs.js:1635
+#, javascript-format
+msgid "Layout \"%s\" is not configured in system"
+msgstr "\"%s\" тілі жүйеде бапталмаған"
+
+#: prefs.js:1636
+msgid "Custom application ID"
+msgstr "Пайдаланушы қолданба ID"
+
+#: prefs.js:1643
+msgid "Missing"
+msgstr "Табылмады"
+
+#: prefs.js:1667
+msgid "Remove starting layout rule"
+msgstr "Бастапқы тіл ережесін өшіру"
+
+#: prefs.js:1687
+msgid "No system layouts configured"
+msgstr "Жүйелік тілдер бапталмаған"
+
+#: prefs.js:1728
+msgid "Select Application"
+msgstr "Қолданбаны таңдау"
+
+#: prefs.js:1752
 msgid "Excluded Applications"
 msgstr "Ерекшеленген қолданбалар"
 
-#: prefs.js:742
+#: prefs.js:1753
 msgid "Applications that should be ignored by layout memory"
 msgstr "Тіл жады ескермеуі керек қолданбалар"
 
-#: prefs.js:747
+#: prefs.js:1758
 msgid "Add application ID (e.g. org.gnome.Console)"
 msgstr "Қолданба идентификаторын қосу (мыс. org.gnome.Console)"
 
-#: prefs.js:753
+#: prefs.js:1772
 msgid "Excluded List"
 msgstr "Ерекшеліктер тізімі"
 
-#: prefs.js:772
+#: prefs.js:1791
 msgid "No applications excluded"
 msgstr "Ерекшеленген қолданбалар жоқ"
 
-#: prefs.js:776
+#: prefs.js:1795
 #, javascript-format
 msgid "%d application(s) excluded"
 msgstr "%d қолданба ерекшеленді"
 
-#: prefs.js:787
+#: prefs.js:1809
 msgid "Remove from excluded list"
 msgstr "Ерекшеліктер тізімінен өшіру"
 
-#: prefs.js:833
+#: prefs.js:1844
+msgid "Exclude Application"
+msgstr "Қолданбаны ерекшелеу"
+
+#: prefs.js:1891
 msgid "About"
 msgstr "Кеңейтім туралы"
 
-#: prefs.js:864
-msgid "Advanced keyboard layout switcher for GNOME Shell 51"
-msgstr "GNOME Shell 51 үшін жетілдірілген пернетақта тілін ауыстырғыш"
+#: prefs.js:1922
+msgid "Advanced keyboard layout switcher for GNOME Shell"
+msgstr "GNOME Shell үшін жетілдірілген пернетақта тілін ауыстырғыш"
 
-#: prefs.js:871
+#: prefs.js:1930
 #, javascript-format
 msgid "Version %s"
 msgstr "Нұсқасы %s"
 
-#: prefs.js:881
+#: prefs.js:1940
 msgid "Information"
 msgstr "Ақпарат"
 
-#: prefs.js:886
+#: prefs.js:1945
 msgid "Developer"
 msgstr "Әзірлеуші"
 
-#: prefs.js:892
+#: prefs.js:1951
 msgid "License"
 msgstr "Лицензия"
 
-#: prefs.js:898
+#: prefs.js:1957
 msgid "Platform"
 msgstr "Платформа"
 
-#: prefs.js:905
+#: prefs.js:1964
 msgid "Links & Support"
 msgstr "Сілтемелер мен қолдау"
 
-#: prefs.js:910
+#: prefs.js:1969
 msgid "Source Code"
 msgstr "Бастапқы код"
 
-#: prefs.js:917
+#: prefs.js:1976
 msgid "Open project repository"
 msgstr "Жоба қоймасын ашу"
 
-#: prefs.js:944
+#: prefs.js:2005
 msgid "Correction"
 msgstr "Мәтінді түзету"
 
-#: prefs.js:952
+#: prefs.js:2016
 msgid "Security & Privacy"
 msgstr "Қауіпсіздік және құпиялылық"
 
-#: prefs.js:957
+#: prefs.js:2021
 msgid "In-Memory Keystroke Buffer Notice"
 msgstr "Жадел жадтағы перне басу буфері туралы ескерту"
 
-#: prefs.js:958
+#: prefs.js:2022
 msgid ""
 "When enabled, the extension maintains a temporary buffer of recent "
 "keystrokes (up to 64 chars) strictly in memory to convert text typed in the "
@@ -388,68 +607,101 @@ msgstr ""
 "\n"
 "⚠️ Маңызды: Wayland қолданбалар беттерін оқшаулайды. Кеңейтімдер браузерлерде құпиясөз өрістерін анықтай алмайды. Құпиясөздерді енгізген кезде бұл мүмкіндікті қолданбаңыз."
 
-#: prefs.js:964
+#: prefs.js:2028
 msgid "Configuration"
 msgstr "Баптаулар"
 
-#: prefs.js:969
+#: prefs.js:2033
 msgid "Enable Text Correction"
 msgstr "Мәтінді түзетуді қосу"
 
-#: prefs.js:970
+#: prefs.js:2034
 msgid "Convert text typed in the wrong layout into the alternate language"
 msgstr "Қате тілде терілген мәтінді балама тілге түрлендіру"
 
-#: prefs.js:981
+#: prefs.js:2045
 msgid "Double Left Shift Trigger"
 msgstr "Сол жақ Shift қос басу арқылы іске қосу"
 
-#: prefs.js:982
+#: prefs.js:2046
 msgid "Press Left Shift twice quickly to convert the last typed word"
 msgstr "Соңғы терілген сөзді түрлендіру үшін сол жақ Shift пернесін жылдам екі рет басыңыз"
 
-#: prefs.js:994
+#: prefs.js:2057
+msgid "Convert Selected Text"
+msgstr "Ерекшеленген мәтінді түзету"
+
+#: prefs.js:2058
+msgid ""
+"When the typing buffer is empty, the manual hotkey copies, converts, and "
+"replaces selected text"
+msgstr "Теру буфері бос болса, пернелер тіркесімі ерекшеленген мәтінді көшіріп, түрлендіреді және ауыстырады"
+
+#: prefs.js:2079
 msgid "Manual Hotkey"
 msgstr "Қолмен шақыру пернесі"
 
-#: prefs.js:995
+#: prefs.js:2080
 msgid "Keyboard shortcut to manually trigger text conversion"
 msgstr "Мәтінді түрлендіруді қолмен іске қосуға арналған пернелер тіркесімі"
 
-#: prefs.js:1004
-msgid "Convert Last Word"
-msgstr "Соңғы сөзді түрлендіру"
-
-#: prefs.js:1005
+#: prefs.js:2087
 msgid "Shortcut to trigger conversion of the most recently typed word"
 msgstr "Соңғы терілген сөзді түрлендіру пернесі"
 
-#: prefs.js:1013
-msgid "Reset to default shortcut (<Shift>Pause)"
-msgstr "Әдепкі тіркесімге қайтару (<Shift>Pause)"
+#: prefs.js:2098
+msgid "Terminal Applications"
+msgstr "Терминал қолданбалары"
 
-#: prefs.js:1062
-msgid "Press keys… (Esc: cancel, Backspace: disable)"
-msgstr "Пернелерді басыңыз… (Esc: бас тарту, Backspace: сөндіру)"
+#: prefs.js:2099
+msgid ""
+"Applications where Ctrl+Shift+V and Ctrl+Shift+C are used instead of Ctrl+V "
+"and Ctrl+C"
+msgstr "Ctrl+V және Ctrl+C орнына Ctrl+Shift+V және Ctrl+Shift+C қолданылатын қолданбалар"
 
-#: src/indicator.js:77
+#: prefs.js:2106
+msgid "Reset terminal list to defaults"
+msgstr "Терминалдар тізімін әдепкі мәндерге қайтару"
+
+#: prefs.js:2116
+msgid "Add terminal app ID or WM_CLASS (e.g. org.gnome.Console)"
+msgstr "Терминал ID немесе WM_CLASS қосу (мыс. org.gnome.Console)"
+
+#: prefs.js:2122
+msgid "Configured Terminals"
+msgstr "Бапталған терминалдар"
+
+#: prefs.js:2144
+msgid "No terminal applications configured"
+msgstr "Терминал қолданбалары бапталмаған"
+
+#: prefs.js:2148
+#, javascript-format
+msgid "%d terminal(s) configured"
+msgstr "%d терминал бапталды"
+
+#: prefs.js:2159
+msgid "Remove from terminal list"
+msgstr "Терминалдар тізімінен өшіру"
+
+#: src/indicator.js:78
 msgid "Keyboard layout: none configured"
 msgstr "Пернетақта тілі: бапталмаған"
 
-#: src/indicator.js:80 src/indicator.js:81
+#: src/indicator.js:81 src/indicator.js:82
 #, javascript-format
 msgid "Keyboard layout: %s"
 msgstr "Пернетақта тілі: %s"
 
-#: src/indicator.js:100
+#: src/indicator.js:152
 msgid "Keyboard Layout Indicator"
 msgstr "Пернетақта тілі индикаторы"
 
-#: src/indicator.js:221
+#: src/indicator.js:275
 msgid "No layouts configured"
 msgstr "Тілдер бапталмаған"
 
-#: src/indicator.js:254
+#: src/indicator.js:305
 msgid "Settings…"
 msgstr "Баптаулар…"
 

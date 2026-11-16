@@ -4,7 +4,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: liswitch 51.0\n"
+"Project-Id-Version: liswitch 1.0.0\n"
 "Report-Msgid-Bugs-To: https://github.com/liswitch/liswitch/issues\n"
 "POT-Creation-Date: 2026-11-14 21:22+0500\n"
 "PO-Revision-Date: 2026-11-14 22:00+0500\n"
@@ -15,364 +15,583 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: prefs.js:44 prefs.js:402 prefs.js:530 prefs.js:683
-msgid "Disabled"
-msgstr "Отключено"
-
-#: prefs.js:68
-msgid "General"
-msgstr "Основное"
-
-#: prefs.js:76
-msgid "Panel Indicator"
-msgstr "Индикатор в панели"
-
-#: prefs.js:77
-msgid "Configure the layout indicator in the top panel"
-msgstr "Настройка индикатора раскладки в верхней панели"
-
-#: prefs.js:82
-msgid "Show Indicator"
-msgstr "Показывать индикатор"
-
-#: prefs.js:83
-msgid "Display the keyboard layout indicator in the top panel"
-msgstr "Отображать индикатор раскладки клавиатуры в верхней панели"
-
-#: prefs.js:94
-msgid "Hide System Indicator"
-msgstr "Скрыть системный индикатор"
-
-#: prefs.js:95
-msgid "Hide standard GNOME keyboard indicator to prevent duplicates"
-msgstr "Скрыть стандартный индикатор GNOME для предотвращения дублирования"
-
-#: prefs.js:106
-msgid "Scroll to Switch Layout"
-msgstr "Переключение колесиком мыши"
-
-#: prefs.js:107
-msgid "Switch layouts by scrolling the mouse wheel over the indicator"
-msgstr "Переключать раскладки прокруткой колесика мыши над индикатором"
-
-#: prefs.js:118
-msgid "Short (uppercase, e.g. EN)"
-msgstr "Короткий (заглавные, напр. EN)"
-
-#: prefs.js:119
-msgid "Full Name (e.g. English)"
-msgstr "Полное имя (напр. English)"
-
-#: prefs.js:120
-msgid "Lowercase (e.g. en)"
-msgstr "Строчные буквы (напр. en)"
-
-#: prefs.js:125
-msgid "Label Format"
-msgstr "Формат метки"
-
-#: prefs.js:126
-msgid "Choose how layout names appear in the panel"
-msgstr "Выберите формат отображения названия раскладки в панели"
-
-#: prefs.js:162
-msgid "On-Screen Display (OSD)"
-msgstr "Экранное уведомление (OSD)"
-
-#: prefs.js:163
-msgid "Visual notification popup when switching layouts"
-msgstr "Всплывающее экранное уведомление при смене раскладки"
-
-#: prefs.js:168
-msgid "Show OSD Pop-up"
-msgstr "Показывать всплывающее OSD"
-
-#: prefs.js:169
-msgid "Display a brief centered notification when layout changes"
-msgstr "Показывать краткое уведомление по центру экрана при смене раскладки"
-
-#: prefs.js:183
-msgid "OSD Duration"
-msgstr "Длительность OSD"
-
-#: prefs.js:184
-msgid "How long the OSD stays visible (in milliseconds)"
-msgstr "Время отображения всплывающего уведомления (в миллисекундах)"
-
-#: prefs.js:211
-msgid "Show OSD on Window Restore"
-msgstr "Показывать OSD при восстановлении окна"
-
-#: prefs.js:212
-msgid ""
-"Display notification when layout is restored automatically by window memory"
-msgstr "Отображать уведомление, когда раскладка восстанавливается автоматически памятью окон"
-
-#: prefs.js:240
-msgid "Diagnostics"
-msgstr "Диагностика"
-
-#: prefs.js:241
-msgid "Options for troubleshooting liswitch"
-msgstr "Параметры для отладки и диагностики liswitch"
-
-#: prefs.js:246
-msgid "Debug Logging"
-msgstr "Отладочные сообщения"
-
-#: prefs.js:247
-msgid "Output detailed diagnostic messages to the system journal"
-msgstr "Выводить подробные диагностические сообщения в системный журнал"
-
-#: prefs.js:273
-msgid "Shortcuts"
-msgstr "Горячие клавиши"
-
-#: prefs.js:303
-msgid "Layout Switching Shortcuts"
-msgstr "Сочетания для переключения раскладок"
-
-#: prefs.js:304
-msgid "Configure keybindings to switch between configured input sources"
-msgstr "Настройка горячих клавиш для переключения между настроенными источниками ввода"
-
-#: prefs.js:311
+#: prefs.js:268 prefs.js:1020
 msgid "Next Layout"
 msgstr "Следующая раскладка"
 
-#: prefs.js:312
-msgid "Cycle forward through available input sources"
-msgstr "Циклическое переключение вперед по доступным раскладкам"
-
-#: prefs.js:319
+#: prefs.js:269 prefs.js:1027
 msgid "Previous Layout"
 msgstr "Предыдущая раскладка"
 
-#: prefs.js:320
-msgid "Cycle backward through available input sources"
-msgstr "Циклическое переключение назад по доступным раскладкам"
-
-#: prefs.js:326
-msgid "Direct Layout Selection"
-msgstr "Прямой выбор раскладки"
-
-#: prefs.js:327
-msgid "Jump directly to a specific layout by number (1 to 4)"
-msgstr "Мгновенный переход к конкретной раскладке по номеру (от 1 до 4)"
-
-#: prefs.js:335
+#: prefs.js:270 prefs.js:271 prefs.js:272 prefs.js:273 prefs.js:1045
 #, javascript-format
 msgid "Switch to Layout %d"
 msgstr "Переключить на раскладку %d"
 
-#: prefs.js:336
-#, javascript-format
-msgid "Directly activate layout at index %d"
-msgstr "Прямая активация раскладки с индексом %d"
+#: prefs.js:274 prefs.js:2086
+msgid "Convert Last Word"
+msgstr "Конвертировать последнее слово"
 
-#: prefs.js:343
-msgid "Modifier-Only Shortcuts Note"
-msgstr "Примечание о сочетаниях из одних модификаторов"
+#: prefs.js:316 prefs.js:437 prefs.js:487 prefs.js:1200 prefs.js:1332
+msgid "Disabled"
+msgstr "Отключено"
 
-#: prefs.js:345
-msgid ""
-"GNOME Shell keybindings require a non-modifier key (like Space, Letter, or "
-"Digit). Pure modifier combinations (such as Alt+Shift or Caps Lock) cannot "
-"be assigned via extension keybindings; they are managed at the system XKB "
-"level in Settings → Keyboard → Special Character Entry or GNOME Tweaks."
-msgstr "Для горячих клавиш GNOME Shell требуется клавиша, не являющаяся модификатором (пробел, буква или цифра). Сочетания только из модификаторов (такие как Alt+Shift или Caps Lock) невозможно привязать через расширение; они управляются на системном уровне XKB в Параметры → Клавиатура → Ввод спецсимволов или через GNOME Tweaks."
-
-#: prefs.js:401
+#: prefs.js:436
 #, javascript-format
 msgid "Reset to default shortcut (%s)"
 msgstr "Сбросить к сочетанию по умолчанию (%s)"
 
-#: prefs.js:450
-msgid "Press keys…"
-msgstr "Нажмите клавиши…"
-
-#: prefs.js:451
-msgid "Press keys now — Escape to cancel, Backspace to disable"
-msgstr "Нажмите клавиши сейчас — Escape для отмены, Backspace для отключения"
-
-#: prefs.js:485
-#, javascript-format
-msgid "Shortcut \"%s\" is already assigned to \"%s\"."
-msgstr "Сочетание \"%s\" уже назначено для \"%s\"."
-
-#: prefs.js:536
+#: prefs.js:493
 #, javascript-format
 msgid "Modifier-only shortcut cannot be bound in GNOME Shell: %s"
 msgstr "Сочетание только из модификаторов не поддерживается в GNOME Shell: %s"
 
-#: prefs.js:543
+#: prefs.js:500
 #, javascript-format
 msgid "Conflict: shortcut \"%s\" is assigned to %s (%s)"
 msgstr "Конфликт: сочетание \"%s\" назначено в %s (%s)"
 
-#: prefs.js:550
+#: prefs.js:507
 msgid "Free in System"
 msgstr "Освободить в системе"
 
-#: prefs.js:572
+#: prefs.js:525
 #, javascript-format
 msgid "Overriding system shortcut: %s (%s)"
 msgstr "Переопределяет системное сочетание: %s (%s)"
 
-#: prefs.js:578
+#: prefs.js:531
 msgid "Restore in System"
 msgstr "Восстановить в системе"
 
-#: prefs.js:612
+#: prefs.js:586
+msgid "Press keys…"
+msgstr "Нажмите клавиши…"
+
+#: prefs.js:587
+msgid "Press keys now — Escape to cancel, Backspace to disable"
+msgstr "Нажмите клавиши сейчас — Escape для отмены, Backspace для отключения"
+
+#: prefs.js:630
+#, javascript-format
+msgid "Shortcut \"%s\" is already assigned to \"%s\"."
+msgstr "Сочетание \"%s\" уже назначено для \"%s\"."
+
+#: prefs.js:681
+msgid "General"
+msgstr "Основное"
+
+#: prefs.js:691
+msgid "Panel Indicator"
+msgstr "Индикатор в панели"
+
+#: prefs.js:692
+msgid "Configure the layout indicator in the top panel"
+msgstr "Настройка индикатора раскладки в верхней панели"
+
+#: prefs.js:697
+msgid "Show Indicator"
+msgstr "Показывать индикатор"
+
+#: prefs.js:698
+msgid "Display the keyboard layout indicator in the top panel"
+msgstr "Отображать индикатор раскладки клавиатуры в верхней панели"
+
+#: prefs.js:709
+msgid "Hide System Indicator"
+msgstr "Скрыть системный индикатор"
+
+#: prefs.js:710
+msgid "Hide standard GNOME keyboard indicator to prevent duplicates"
+msgstr "Скрыть стандартный индикатор GNOME для предотвращения дублирования"
+
+#: prefs.js:721
+msgid "Scroll to Switch Layout"
+msgstr "Переключение колесиком мыши"
+
+#: prefs.js:722
+msgid "Switch layouts by scrolling the mouse wheel over the indicator"
+msgstr "Переключать раскладки прокруткой колесика мыши над индикатором"
+
+#: prefs.js:733
+msgid "Short (uppercase, e.g. EN)"
+msgstr "Короткий (заглавные, напр. EN)"
+
+#: prefs.js:734
+msgid "Full Name (e.g. English)"
+msgstr "Полное имя (напр. English)"
+
+#: prefs.js:735
+msgid "Lowercase (e.g. en)"
+msgstr "Строчные буквы (напр. en)"
+
+#: prefs.js:740
+msgid "Label Format"
+msgstr "Формат метки"
+
+#: prefs.js:741
+msgid "Choose how layout names appear in the panel"
+msgstr "Выберите формат отображения названия раскладки в панели"
+
+#: prefs.js:757
+msgid "Next to System Indicator"
+msgstr "Рядом с системным индикатором"
+
+#: prefs.js:758
+msgid "Right Panel Box"
+msgstr "Правая часть панели"
+
+#: prefs.js:759
+msgid "Center Panel Box"
+msgstr "Центр панели"
+
+#: prefs.js:760
+msgid "Left Panel Box"
+msgstr "Левая часть панели"
+
+#: prefs.js:765
+msgid "Indicator Position"
+msgstr "Позиция индикатора"
+
+#: prefs.js:766
+msgid "Choose where the layout indicator appears in the top panel"
+msgstr "Выберите расположение индикатора раскладки в верхней панели"
+
+#: prefs.js:817
+msgid "On-Screen Display (OSD)"
+msgstr "Экранное уведомление (OSD)"
+
+#: prefs.js:818
+msgid "Visual notification popup when switching layouts"
+msgstr "Всплывающее экранное уведомление при смене раскладки"
+
+#: prefs.js:823
+msgid "Show OSD Pop-up"
+msgstr "Показывать всплывающее OSD"
+
+#: prefs.js:824
+msgid "Display a brief notification when layout changes"
+msgstr "Показывать краткое уведомление при смене раскладки"
+
+#: prefs.js:838
+msgid "Center of Screen"
+msgstr "По центру экрана"
+
+#: prefs.js:839
+msgid "Top of Screen"
+msgstr "Вверху экрана"
+
+#: prefs.js:840
+msgid "Bottom of Screen"
+msgstr "Внизу экрана"
+
+#: prefs.js:845
+msgid "OSD Position"
+msgstr "Позиция OSD"
+
+#: prefs.js:846
+msgid "Vertical placement of the OSD notification on the active monitor"
+msgstr "Вертикальное расположение всплывающего уведомления на активном мониторе"
+
+#: prefs.js:871
+msgid "OSD Duration"
+msgstr "Длительность OSD"
+
+#: prefs.js:872
+msgid "How long the OSD stays visible (in milliseconds)"
+msgstr "Время отображения всплывающего уведомления (в миллисекундах)"
+
+#: prefs.js:899
+msgid "Show OSD on Window Restore"
+msgstr "Показывать OSD при восстановлении окна"
+
+#: prefs.js:900
+msgid ""
+"Display notification when layout is restored automatically by window memory"
+msgstr "Отображать уведомление, когда раскладка восстанавливается автоматически памятью окон"
+
+#: prefs.js:934
+msgid "Diagnostics"
+msgstr "Диагностика"
+
+#: prefs.js:935
+msgid "Options for troubleshooting liswitch"
+msgstr "Параметры для отладки и диагностики liswitch"
+
+#: prefs.js:940
+msgid "Debug Logging"
+msgstr "Отладочные сообщения"
+
+#: prefs.js:941
+msgid "Output detailed diagnostic messages to the system journal"
+msgstr "Выводить подробные диагностические сообщения в системный журнал"
+
+#: prefs.js:980
+msgid "Shortcuts"
+msgstr "Горячие клавиши"
+
+#: prefs.js:1013
+msgid "Layout Switching Shortcuts"
+msgstr "Сочетания для переключения раскладок"
+
+#: prefs.js:1014
+msgid "Configure keybindings to switch between configured input sources"
+msgstr "Настройка горячих клавиш для переключения между настроенными источниками ввода"
+
+#: prefs.js:1021
+msgid "Cycle forward through available input sources"
+msgstr "Циклическое переключение вперед по доступным раскладкам"
+
+#: prefs.js:1028
+msgid "Cycle backward through available input sources"
+msgstr "Циклическое переключение назад по доступным раскладкам"
+
+#: prefs.js:1037
+msgid "Direct Layout Selection"
+msgstr "Прямой выбор раскладки"
+
+#: prefs.js:1038
+msgid "Jump directly to a specific layout by number (1 to 4)"
+msgstr "Мгновенный переход к конкретной раскладке по номеру (от 1 до 4)"
+
+#: prefs.js:1046
+#, javascript-format
+msgid "Directly activate layout at index %d"
+msgstr "Прямая активация раскладки с индексом %d"
+
+#: prefs.js:1057
+msgid "Modifier-Only Switching (System XKB)"
+msgstr "Переключение модификаторами (системный XKB)"
+
+#: prefs.js:1059
+msgid ""
+"GNOME Shell keybindings require a non-modifier key. Pure modifier "
+"combinations are configured at the system XKB level via "
+"org.gnome.desktop.input-sources xkb-options (other XKB options such as "
+"compose:* or lv3:* are preserved)."
+msgstr "Для горячих клавиш GNOME Shell требуется клавиша, не являющаяся модификатором. Сочетания только из модификаторов настраиваются на системном уровне XKB через org.gnome.desktop.input-sources xkb-options (прочие параметры XKB, такие как compose:* или lv3:*, сохраняются)."
+
+#: prefs.js:1067
+msgid "None (system default)"
+msgstr "Нет (системное значение по умолчанию)"
+
+#: prefs.js:1068
+msgid "Alt+Shift (grp:alt_shift_toggle)"
+msgstr "Alt+Shift (grp:alt_shift_toggle)"
+
+#: prefs.js:1069
+msgid "Ctrl+Shift (grp:ctrl_shift_toggle)"
+msgstr "Ctrl+Shift (grp:ctrl_shift_toggle)"
+
+#: prefs.js:1070
+msgid "Caps Lock (grp:caps_toggle)"
+msgstr "Caps Lock (grp:caps_toggle)"
+
+#: prefs.js:1077
+msgid "XKB Modifier Toggle"
+msgstr "Переключатель модификаторами XKB"
+
+#: prefs.js:1078 prefs.js:1152
+msgid "Configure system XKB modifier-only layout switching"
+msgstr "Настройка переключения раскладок одними модификаторами на уровне XKB"
+
+#: prefs.js:1088
+msgid "Win+Space (System switch-input-source)"
+msgstr "Win+Space (системный switch-input-source)"
+
+#: prefs.js:1089
+msgid "Indicates the built-in GNOME input-source switching shortcut"
+msgstr "Отображает состояние встроенного сочетания GNOME для смены источника ввода"
+
+#: prefs.js:1105
+msgid "System schema org.gnome.desktop.input-sources is unavailable"
+msgstr "Системная схема org.gnome.desktop.input-sources недоступна"
+
+#: prefs.js:1125
+#, javascript-format
+msgid "Custom (%s)"
+msgstr "Пользовательский (%s)"
+
+#: prefs.js:1150
+#, javascript-format
+msgid "Preserved XKB options: %s"
+msgstr "Сохранённые параметры XKB: %s"
+
+#: prefs.js:1161
+msgid "System schema org.gnome.desktop.wm.keybindings is unavailable"
+msgstr "Системная схема org.gnome.desktop.wm.keybindings недоступна"
+
+#: prefs.js:1162
+msgid "Unavailable"
+msgstr "Недоступно"
+
+#: prefs.js:1169
+#, javascript-format
+msgid "Active in system keybindings: %s"
+msgstr "Активно в системных привязках: %s"
+
+#: prefs.js:1170
+msgid "Active"
+msgstr "Активно"
+
+#: prefs.js:1177
+#, javascript-format
+msgid "Current system switch-input-source: %s (Win+Space not assigned)"
+msgstr "Текущий системный switch-input-source: %s (Win+Space не назначен)"
+
+#: prefs.js:1178
+msgid "Custom"
+msgstr "Своё"
+
+#: prefs.js:1195
+msgid "Overridden by a Liswitch shortcut above"
+msgstr "Переопределено сочетанием Liswitch выше"
+
+#: prefs.js:1196
+msgid "Overridden"
+msgstr "Переопределено"
+
+#: prefs.js:1199
+msgid "Disabled in system keybindings"
+msgstr "Отключено в системных привязках"
+
+#: prefs.js:1259
 msgid "Memory"
 msgstr "Запоминание"
 
-#: prefs.js:632
+#: prefs.js:1281
 msgid "System Setting Conflict"
 msgstr "Конфликт с системными настройками"
 
-#: prefs.js:633
+#: prefs.js:1282
 msgid "Notice regarding GNOME desktop input settings"
 msgstr "Уведомление о параметрах ввода рабочего стола GNOME"
 
-#: prefs.js:638
+#: prefs.js:1287
 msgid "System \"Per-Window\" Switching Active ⚠️"
 msgstr "В системе активно переключение \"для каждого окна\" ⚠️"
 
-#: prefs.js:640
+#: prefs.js:1289
 msgid ""
 "GNOME Settings has \"Switch input sources individually for each window\" "
 "enabled. To avoid duplicate switching conflicts, liswitch layout memory is "
 "suspended."
 msgstr "В настройках GNOME включена опция \"Использовать разные источники ввода для каждого окна\". Во избежание конфликтов и двойных переключений память раскладок liswitch приостановлена."
 
-#: prefs.js:647
+#: prefs.js:1296
 msgid "Disable in System"
 msgstr "Отключить в системе"
 
-#: prefs.js:675
+#: prefs.js:1324
 msgid "Layout Memory Mode"
 msgstr "Режим памяти раскладок"
 
-#: prefs.js:676
+#: prefs.js:1325
 msgid "Remember and restore keyboard layout when switching between windows"
 msgstr "Запоминать и восстанавливать раскладку при переключении между окнами"
 
-#: prefs.js:681
+#: prefs.js:1330
 msgid "Per-Application (recommended)"
 msgstr "Для каждого приложения (рекомендуется)"
 
-#: prefs.js:682
+#: prefs.js:1331
 msgid "Per-Window"
 msgstr "Для каждого окна"
 
-#: prefs.js:687
+#: prefs.js:1336
 msgid "Memory Mode"
 msgstr "Режим памяти"
 
-#: prefs.js:688
+#: prefs.js:1337
 msgid "Choose how layouts are tracked across applications and windows"
 msgstr "Выберите способ отслеживания раскладок для приложений и окон"
 
-#: prefs.js:711
+#: prefs.js:1360
 msgid "Keep active layout"
 msgstr "Сохранять текущую раскладку"
 
-#: prefs.js:712
+#: prefs.js:1361
 msgid "Reset to first layout"
 msgstr "Сбрасывать на первую раскладку"
 
-#: prefs.js:716
+#: prefs.js:1365
 msgid "New Windows Initial Layout"
 msgstr "Начальная раскладка для новых окон"
 
-#: prefs.js:717
+#: prefs.js:1366
 msgid "Action when focusing a window that has no saved layout"
 msgstr "Действие при переходе к окну, для которого нет сохраненной раскладки"
 
-#: prefs.js:741
+#: prefs.js:1455
+msgid "Search applications by name or ID…"
+msgstr "Поиск приложений по названию или ID…"
+
+#: prefs.js:1465
+msgid "No matching applications found"
+msgstr "Подходящие приложения не найдены"
+
+#: prefs.js:1486
+msgid "Added"
+msgstr "Добавлено"
+
+#: prefs.js:1553
+msgid "Per-App Starting Layout"
+msgstr "Стартовая раскладка для приложений"
+
+#: prefs.js:1554
+msgid ""
+"Force a specific layout when an application is focused for the first time"
+msgstr "Принудительно включать выбранную раскладку при первом фокусе приложения"
+
+#: prefs.js:1559
+msgid "Application ID (e.g. org.gnome.Console)"
+msgstr "ID приложения (напр. org.gnome.Console)"
+
+#: prefs.js:1568 prefs.js:1767
+msgid "Choose from installed applications"
+msgstr "Выбрать из установленных приложений"
+
+#: prefs.js:1573
+msgid "Starting Layout"
+msgstr "Стартовая раскладка"
+
+#: prefs.js:1574
+msgid "Layout activated on first focus of this application"
+msgstr "Раскладка, включаемая при первом фокусе этого приложения"
+
+#: prefs.js:1579
+msgid "Add"
+msgstr "Добавить"
+
+#: prefs.js:1582
+msgid "Assign starting layout for this application"
+msgstr "Назначить стартовую раскладку для этого приложения"
+
+#: prefs.js:1587
+msgid "Configured Rules"
+msgstr "Настроенные правила"
+
+#: prefs.js:1613
+msgid "No per-app starting layouts configured"
+msgstr "Стартовые раскладки для приложений не заданы"
+
+#: prefs.js:1618
+#, javascript-format
+msgid "%d application rule(s) configured"
+msgstr "Настроено правил для приложений: %d"
+
+#: prefs.js:1635
+#, javascript-format
+msgid "Layout \"%s\" is not configured in system"
+msgstr "Раскладка \"%s\" не настроена в системе"
+
+#: prefs.js:1636
+msgid "Custom application ID"
+msgstr "Пользовательский ID приложения"
+
+#: prefs.js:1643
+msgid "Missing"
+msgstr "Отсутствует"
+
+#: prefs.js:1667
+msgid "Remove starting layout rule"
+msgstr "Удалить правило стартовой раскладки"
+
+#: prefs.js:1687
+msgid "No system layouts configured"
+msgstr "Системные раскладки не настроены"
+
+#: prefs.js:1728
+msgid "Select Application"
+msgstr "Выбрать приложение"
+
+#: prefs.js:1752
 msgid "Excluded Applications"
 msgstr "Исключенные приложения"
 
-#: prefs.js:742
+#: prefs.js:1753
 msgid "Applications that should be ignored by layout memory"
 msgstr "Приложения, которые должны игнорироваться памятью раскладок"
 
-#: prefs.js:747
+#: prefs.js:1758
 msgid "Add application ID (e.g. org.gnome.Console)"
 msgstr "Добавить идентификатор (напр. org.gnome.Console)"
 
-#: prefs.js:753
+#: prefs.js:1772
 msgid "Excluded List"
 msgstr "Список исключений"
 
-#: prefs.js:772
+#: prefs.js:1791
 msgid "No applications excluded"
 msgstr "Нет исключенных приложений"
 
-#: prefs.js:776
+#: prefs.js:1795
 #, javascript-format
 msgid "%d application(s) excluded"
 msgstr "Исключено приложений: %d"
 
-#: prefs.js:787
+#: prefs.js:1809
 msgid "Remove from excluded list"
 msgstr "Удалить из списка исключений"
 
-#: prefs.js:833
+#: prefs.js:1844
+msgid "Exclude Application"
+msgstr "Исключить приложение"
+
+#: prefs.js:1891
 msgid "About"
 msgstr "О расширении"
 
-#: prefs.js:864
-msgid "Advanced keyboard layout switcher for GNOME Shell 51"
-msgstr "Продвинутый переключатель раскладок клавиатуры для GNOME Shell 51"
+#: prefs.js:1922
+msgid "Advanced keyboard layout switcher for GNOME Shell"
+msgstr "Продвинутый переключатель раскладок клавиатуры для GNOME Shell"
 
-#: prefs.js:871
+#: prefs.js:1930
 #, javascript-format
 msgid "Version %s"
 msgstr "Версия %s"
 
-#: prefs.js:881
+#: prefs.js:1940
 msgid "Information"
 msgstr "Информация"
 
-#: prefs.js:886
+#: prefs.js:1945
 msgid "Developer"
 msgstr "Разработчик"
 
-#: prefs.js:892
+#: prefs.js:1951
 msgid "License"
 msgstr "Лицензия"
 
-#: prefs.js:898
+#: prefs.js:1957
 msgid "Platform"
 msgstr "Платформа"
 
-#: prefs.js:905
+#: prefs.js:1964
 msgid "Links & Support"
 msgstr "Ссылки и поддержка"
 
-#: prefs.js:910
+#: prefs.js:1969
 msgid "Source Code"
 msgstr "Исходный код"
 
-#: prefs.js:917
+#: prefs.js:1976
 msgid "Open project repository"
 msgstr "Открыть репозиторий проекта"
 
-#: prefs.js:944
+#: prefs.js:2005
 msgid "Correction"
 msgstr "Исправление текста"
 
-#: prefs.js:952
+#: prefs.js:2016
 msgid "Security & Privacy"
 msgstr "Безопасность и конфиденциальность"
 
-#: prefs.js:957
+#: prefs.js:2021
 msgid "In-Memory Keystroke Buffer Notice"
 msgstr "Уведомление о буфере нажатий клавиш в оперативной памяти"
 
-#: prefs.js:958
+#: prefs.js:2022
 msgid ""
 "When enabled, the extension maintains a temporary buffer of recent "
 "keystrokes (up to 64 chars) strictly in memory to convert text typed in the "
@@ -388,68 +607,101 @@ msgstr ""
 "\n"
 "⚠️ Важно: протокол Wayland изолирует окна приложений. Расширения не могут определять поля ввода паролей внутри веб-браузеров или сторонних программ. Не используйте данную функцию при вводе конфиденциальных паролей."
 
-#: prefs.js:964
+#: prefs.js:2028
 msgid "Configuration"
 msgstr "Конфигурация"
 
-#: prefs.js:969
+#: prefs.js:2033
 msgid "Enable Text Correction"
 msgstr "Включить исправление текста"
 
-#: prefs.js:970
+#: prefs.js:2034
 msgid "Convert text typed in the wrong layout into the alternate language"
 msgstr "Конвертировать текст, набранный не в той раскладке, на альтернативный язык"
 
-#: prefs.js:981
+#: prefs.js:2045
 msgid "Double Left Shift Trigger"
 msgstr "Срабатывание по двойному левому Shift"
 
-#: prefs.js:982
+#: prefs.js:2046
 msgid "Press Left Shift twice quickly to convert the last typed word"
 msgstr "Быстро нажмите левый Shift дважды для конвертации последнего набранного слова"
 
-#: prefs.js:994
+#: prefs.js:2057
+msgid "Convert Selected Text"
+msgstr "Исправление выделенного текста"
+
+#: prefs.js:2058
+msgid ""
+"When the typing buffer is empty, the manual hotkey copies, converts, and "
+"replaces selected text"
+msgstr "Если буфер ввода пуст, горячая клавиша копирует, конвертирует и заменяет выделенный текст"
+
+#: prefs.js:2079
 msgid "Manual Hotkey"
 msgstr "Горячая клавиша ручного вызова"
 
-#: prefs.js:995
+#: prefs.js:2080
 msgid "Keyboard shortcut to manually trigger text conversion"
 msgstr "Сочетание клавиш для ручного запуска конвертации текста"
 
-#: prefs.js:1004
-msgid "Convert Last Word"
-msgstr "Конвертировать последнее слово"
-
-#: prefs.js:1005
+#: prefs.js:2087
 msgid "Shortcut to trigger conversion of the most recently typed word"
 msgstr "Горячая клавиша для конвертации последнего набранного слова"
 
-#: prefs.js:1013
-msgid "Reset to default shortcut (<Shift>Pause)"
-msgstr "Сбросить к сочетанию по умолчанию (<Shift>Pause)"
+#: prefs.js:2098
+msgid "Terminal Applications"
+msgstr "Приложения терминалов"
 
-#: prefs.js:1062
-msgid "Press keys… (Esc: cancel, Backspace: disable)"
-msgstr "Нажмите клавиши… (Esc: отмена, Backspace: отключить)"
+#: prefs.js:2099
+msgid ""
+"Applications where Ctrl+Shift+V and Ctrl+Shift+C are used instead of Ctrl+V "
+"and Ctrl+C"
+msgstr "Приложения, в которых вместо Ctrl+V и Ctrl+C используются Ctrl+Shift+V и Ctrl+Shift+C"
 
-#: src/indicator.js:77
+#: prefs.js:2106
+msgid "Reset terminal list to defaults"
+msgstr "Сбросить список терминалов к значениям по умолчанию"
+
+#: prefs.js:2116
+msgid "Add terminal app ID or WM_CLASS (e.g. org.gnome.Console)"
+msgstr "Добавить ID или WM_CLASS терминала (напр. org.gnome.Console)"
+
+#: prefs.js:2122
+msgid "Configured Terminals"
+msgstr "Настроенные терминалы"
+
+#: prefs.js:2144
+msgid "No terminal applications configured"
+msgstr "Приложения терминалов не настроены"
+
+#: prefs.js:2148
+#, javascript-format
+msgid "%d terminal(s) configured"
+msgstr "Настроено терминалов: %d"
+
+#: prefs.js:2159
+msgid "Remove from terminal list"
+msgstr "Удалить из списка терминалов"
+
+#: src/indicator.js:78
 msgid "Keyboard layout: none configured"
 msgstr "Раскладка клавиатуры: не настроена"
 
-#: src/indicator.js:80 src/indicator.js:81
+#: src/indicator.js:81 src/indicator.js:82
 #, javascript-format
 msgid "Keyboard layout: %s"
 msgstr "Раскладка клавиатуры: %s"
 
-#: src/indicator.js:100
+#: src/indicator.js:152
 msgid "Keyboard Layout Indicator"
 msgstr "Индикатор раскладки клавиатуры"
 
-#: src/indicator.js:221
+#: src/indicator.js:275
 msgid "No layouts configured"
 msgstr "Раскладки не настроены"
 
-#: src/indicator.js:254
+#: src/indicator.js:305
 msgid "Settings…"
 msgstr "Настройки…"
 
