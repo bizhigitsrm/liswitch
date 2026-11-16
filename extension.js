@@ -5,7 +5,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Compat from './src/compat.js';
 import {InputSourceService} from './src/inputSourceService.js';
-import {Indicator} from './src/indicator.js';
+import {Indicator, resolveIndicatorPlacement} from './src/indicator.js';
 import {HotkeyManager} from './src/hotkeys.js';
 import {WindowMemory} from './src/windowMemory.js';
 import {OsdService} from './src/osd.js';
@@ -48,6 +48,11 @@ export default class LiswitchExtension extends Extension {
         this._indicatorSettingId = this._settings.connect('changed::indicator-enabled', () => {
             this._syncIndicator();
         });
+        this._indicatorPositionSettingId = this._settings.settings_schema?.has_key?.('indicator-position')
+            ? this._settings.connect('changed::indicator-position', () => {
+                this._repositionIndicator();
+            })
+            : 0;
     }
 
     _syncIndicator() {
@@ -60,22 +65,28 @@ export default class LiswitchExtension extends Extension {
                 () => this.openPreferences()
             );
 
-            // Position right next to system keyboard indicator if present
-            let position = 0;
-            if (Main?.panel?.statusArea?.keyboard?.container) {
-                const children = Main.panel._rightBox?.get_children?.() ?? [];
-                const idx = children.indexOf(Main.panel.statusArea['keyboard'].container);
-                if (idx >= 0)
-                    position = idx;
-            }
+            const posSetting = this._settings?.settings_schema?.has_key?.('indicator-position')
+                ? this._settings.get_string('indicator-position')
+                : 'system';
+            const {box, position} = resolveIndicatorPlacement(posSetting, Main?.panel);
 
-            if (Compat.addToStatusArea(Main?.panel, this.uuid, this._indicator, position, 'right'))
-                Log.debug(`Indicator added to status area (role: ${this.uuid}, position: ${position})`);
+            if (Compat.addToStatusArea(Main?.panel, this.uuid, this._indicator, position, box))
+                Log.debug(`Indicator added to status area (role: ${this.uuid}, box: ${box}, position: ${position})`);
         } else if (!isEnabled && this._indicator) {
             Log.debug('Indicator disabled in settings: destroying indicator button');
             this._indicator.destroy();
             this._indicator = null;
         }
+    }
+
+    _repositionIndicator() {
+        if (!this._indicator)
+            return;
+
+        Log.debug('Indicator position changed in settings: repositioning indicator');
+        this._indicator.destroy();
+        this._indicator = null;
+        this._syncIndicator();
     }
 
     disable() {
@@ -84,6 +95,11 @@ export default class LiswitchExtension extends Extension {
         if (this._indicatorSettingId) {
             this._settings?.disconnect(this._indicatorSettingId);
             this._indicatorSettingId = 0;
+        }
+
+        if (this._indicatorPositionSettingId) {
+            this._settings?.disconnect(this._indicatorPositionSettingId);
+            this._indicatorPositionSettingId = 0;
         }
 
         if (this._indicator) {

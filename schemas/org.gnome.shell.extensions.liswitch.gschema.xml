@@ -33,6 +33,18 @@
       <description>Whether scrolling the mouse wheel over the indicator switches to next/previous layout.</description>
     </key>
 
+    <key name="indicator-position" type="s">
+      <choices>
+        <choice value="system"/>
+        <choice value="left"/>
+        <choice value="center"/>
+        <choice value="right"/>
+      </choices>
+      <default>'system'</default>
+      <summary>Panel indicator position</summary>
+      <description>Where to place the layout indicator in the top panel: 'system' (next to the system keyboard indicator), 'left', 'center', or 'right'.</description>
+    </key>
+
     <!-- === Память раскладок для окон/приложений === -->
     <key name="memory-mode" type="s">
       <choices>

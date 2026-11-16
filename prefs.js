@@ -589,6 +589,40 @@ class LiswitchGeneralPage extends Adw.PreferencesPage {
                 this._settings.set_string('indicator-format', formatValues[idx]);
         });
 
+        const positionModel = new Gtk.StringList();
+        positionModel.append(_('Next to System Indicator'));
+        positionModel.append(_('Right Panel Box'));
+        positionModel.append(_('Center Panel Box'));
+        positionModel.append(_('Left Panel Box'));
+
+        const positionValues = ['system', 'right', 'center', 'left'];
+
+        const positionRow = new Adw.ComboRow({
+            title: _('Indicator Position'),
+            subtitle: _('Choose where the layout indicator appears in the top panel'),
+            model: positionModel,
+        });
+        indicatorGroup.add(positionRow);
+
+        if (this._settings.settings_schema?.has_key?.('indicator-position') !== false) {
+            const currentPos = this._settings.get_string('indicator-position');
+            const posIdx = positionValues.indexOf(currentPos);
+            positionRow.selected = posIdx >= 0 ? posIdx : 0;
+
+            positionRow.connect('notify::selected', () => {
+                const idx = positionRow.selected;
+                if (idx >= 0 && idx < positionValues.length)
+                    this._settings.set_string('indicator-position', positionValues[idx]);
+            });
+
+            this._tracker.connect(this._settings, 'changed::indicator-position', () => {
+                const val = this._settings.get_string('indicator-position');
+                const idx = positionValues.indexOf(val);
+                if (idx >= 0 && positionRow.selected !== idx)
+                    positionRow.selected = idx;
+            });
+        }
+
         indicatorRow.bind_property(
             'active',
             hideSystemRow,
@@ -604,6 +638,12 @@ class LiswitchGeneralPage extends Adw.PreferencesPage {
         indicatorRow.bind_property(
             'active',
             formatRow,
+            'sensitive',
+            GObject.BindingFlags.DEFAULT | GObject.BindingFlags.SYNC_CREATE
+        );
+        indicatorRow.bind_property(
+            'active',
+            positionRow,
             'sensitive',
             GObject.BindingFlags.DEFAULT | GObject.BindingFlags.SYNC_CREATE
         );

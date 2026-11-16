@@ -84,6 +84,57 @@ export function getAccessibleLayoutLabel(source) {
     return `Keyboard layout: ${name}`;
 }
 
+export const INDICATOR_POSITIONS = ['system', 'left', 'center', 'right'];
+
+/**
+ * Resolve top panel box name and insertion index for the indicator.
+ *
+ * @param {string} positionSetting - One of 'system', 'left', 'center', 'right'
+ * @param {object|null} [panel=null] - GNOME Shell Main.panel (or mock)
+ * @returns {{box: 'left'|'center'|'right', position: number}}
+ */
+export function resolveIndicatorPlacement(positionSetting, panel = null) {
+    switch (positionSetting) {
+    case 'left': {
+        const count = panel?._leftBox?.get_children?.()?.length;
+        return {
+            box: 'left',
+            position: typeof count === 'number' ? count : -1,
+        };
+    }
+    case 'center': {
+        const count = panel?._centerBox?.get_children?.()?.length;
+        return {
+            box: 'center',
+            position: typeof count === 'number' ? count : -1,
+        };
+    }
+    case 'right':
+        return {
+            box: 'right',
+            position: 0,
+        };
+    case 'system':
+    default: {
+        let position = 0;
+        const kbdContainer = panel?.statusArea?.keyboard?.container;
+        if (kbdContainer) {
+            const children =
+                kbdContainer.get_parent?.()?.get_children?.() ??
+                panel._rightBox?.get_children?.() ??
+                [];
+            const idx = children.indexOf(kbdContainer);
+            if (idx >= 0)
+                position = idx;
+        }
+        return {
+            box: 'right',
+            position,
+        };
+    }
+    }
+}
+
 /**
  * Indicator
  *
@@ -96,7 +147,7 @@ export const Indicator = GObject.registerClass({
         'destroy': {},
     },
 }, class Indicator extends BaseButton {
-    _init(settings, inputSourceService, openPreferences = null) {
+    _init(settings, inputSourceService, openPreferences = null, options = {}) {
         if (isInsideShell && PanelMenu?.Button) {
             super._init(0.5, _('Keyboard Layout Indicator'), false);
         } else {
@@ -111,6 +162,7 @@ export const Indicator = GObject.registerClass({
         this._settings = settings;
         this._inputSourceService = inputSourceService;
         this._openPreferences = openPreferences;
+        this._panelOverride = options.panel ?? null;
         this._isDestroyed = false;
         this._lastScrollTime = 0;
         this._systemIndicatorWasHidden = false;
@@ -149,6 +201,7 @@ export const Indicator = GObject.registerClass({
             const sourcesId = this._inputSourceService.connect('sources-changed', () => {
                 this._updateLabel();
                 this._rebuildMenu();
+                this._syncSystemIndicator();
             });
             this._serviceSignals.push(
                 {obj: this._inputSourceService, id: currentId},
@@ -280,11 +333,12 @@ export const Indicator = GObject.registerClass({
      * Synchronize standard system keyboard indicator visibility according to user preferences.
      */
     _syncSystemIndicator() {
-        if (!this._settings || !Main?.panel?.statusArea)
+        const panel = this._panelOverride ?? Main?.panel;
+        if (!this._settings || !panel?.statusArea)
             return;
 
         const shouldHide = this._settings.get_boolean('hide-system-indicator');
-        const systemIndicator = Main.panel.statusArea['keyboard'];
+        const systemIndicator = panel.statusArea['keyboard'];
         if (!systemIndicator)
             return;
 
@@ -303,9 +357,10 @@ export const Indicator = GObject.registerClass({
      * Restore system indicator if it was hidden by this instance.
      */
     _restoreSystemIndicator() {
-        if (this._systemIndicatorWasHidden && Main?.panel?.statusArea?.keyboard) {
+        const panel = this._panelOverride ?? Main?.panel;
+        if (this._systemIndicatorWasHidden && panel?.statusArea?.keyboard) {
             try {
-                Main.panel.statusArea['keyboard'].show();
+                panel.statusArea['keyboard'].show();
                 this._systemIndicatorWasHidden = false;
                 Log.debug('Indicator: restored system keyboard indicator upon indicator destruction');
             } catch (e) {
@@ -403,6 +458,7 @@ export const Indicator = GObject.registerClass({
         this._inputSourceService = null;
         this._settings = null;
         this._openPreferences = null;
+        this._panelOverride = null;
         this._label = null;
     }
 
