@@ -15,12 +15,19 @@ import {
     cleanupUnusedSystemOverrides,
     KeyBindingFlags,
     ActionMode,
+    XKB_SWITCH_PRESETS,
+    getXkbGroupToggleOption,
+    getOtherXkbOptions,
+    setXkbGroupToggleOption,
+    applyXkbGroupToggleSetting,
+    getSystemInputSourceSwitchInfo,
 } from '../src/hotkeys.js';
 import {InputSourceService} from '../src/inputSourceService.js';
 import * as Log from '../src/log.js';
 import {
     assert,
     assertEqual,
+    assertDeepEqual,
     MockInputSourceManager,
     MockWindowManager,
     MockSettings,
@@ -478,6 +485,188 @@ function runTests() {
         assert(!mockWm.keybindings.has('convert-hotkey'), 'HotkeyManager must not bind convert-hotkey');
         hotkeys.destroy();
         service.destroy();
+        console.log('  -> PASS');
+    }
+
+    // --- Test 11: XKB xkb-options grp:* extraction and non-grp preservation ---
+    console.log('Test 11: getXkbGroupToggleOption(), getOtherXkbOptions(), and setXkbGroupToggleOption()...');
+    {
+        // Presets include none, alt_shift, ctrl_shift, caps
+        assertDeepEqual(
+            XKB_SWITCH_PRESETS.map(p => p.option),
+            [null, 'grp:alt_shift_toggle', 'grp:ctrl_shift_toggle', 'grp:caps_toggle'],
+            'XKB_SWITCH_PRESETS should expose standard presets'
+        );
+
+        // Empty / invalid inputs
+        assertEqual(getXkbGroupToggleOption([]), null, 'Empty array has no grp:* option');
+        assertEqual(getXkbGroupToggleOption(null), null, 'null input returns null');
+        assertEqual(getXkbGroupToggleOption(undefined), null, 'undefined input returns null');
+
+        // grp_led:* must NOT be confused with grp:*
+        assertEqual(
+            getXkbGroupToggleOption(['compose:ralt', 'lv3:ralt_switch', 'grp_led:caps']),
+            null,
+            'grp_led:caps must not be matched as grp:* toggle'
+        );
+        assertDeepEqual(
+            getOtherXkbOptions(['compose:ralt', 'grp:alt_shift_toggle', 'lv3:ralt_switch', 'grp_led:caps']),
+            ['compose:ralt', 'lv3:ralt_switch', 'grp_led:caps'],
+            'getOtherXkbOptions preserves compose:*, lv3:*, and grp_led:*'
+        );
+
+        // Extracts active grp:* token
+        assertEqual(
+            getXkbGroupToggleOption(['compose:ralt', 'grp:alt_shift_toggle', 'lv3:ralt_switch']),
+            'grp:alt_shift_toggle',
+            'Extracts grp:alt_shift_toggle'
+        );
+        // When multiple grp:* tokens exist, last effective one is returned
+        assertEqual(
+            getXkbGroupToggleOption(['grp:alt_shift_toggle', 'grp:ctrl_shift_toggle']),
+            'grp:ctrl_shift_toggle',
+            'Last grp:* token wins'
+        );
+
+        // Replacing grp:* preserves other XKB options and does not mutate input
+        const original = ['compose:ralt', 'grp:alt_shift_toggle', 'lv3:ralt_switch', 'caps:escape'];
+        const snapshot = original.slice();
+        const replaced = setXkbGroupToggleOption(original, 'grp:ctrl_shift_toggle');
+        assertDeepEqual(original, snapshot, 'Input array must not be mutated');
+        assertDeepEqual(
+            replaced,
+            ['compose:ralt', 'lv3:ralt_switch', 'caps:escape', 'grp:ctrl_shift_toggle'],
+            'Replaced grp:* while preserving compose:*, lv3:*, caps:*'
+        );
+
+        // Switching to Caps Lock replaces previous grp:* and deduplicates multiple grp:* tokens
+        const deduped = setXkbGroupToggleOption(
+            ['grp:alt_shift_toggle', 'compose:menu', 'grp:ctrl_shift_toggle'],
+            'grp:caps_toggle'
+        );
+        assertDeepEqual(
+            deduped,
+            ['compose:menu', 'grp:caps_toggle'],
+            'Multiple grp:* tokens collapsed to single new grp:* while keeping compose:menu'
+        );
+
+        // Clearing grp:* with null / empty / 'none' leaves all non-grp options intact
+        assertDeepEqual(
+            setXkbGroupToggleOption(replaced, null),
+            ['compose:ralt', 'lv3:ralt_switch', 'caps:escape'],
+            'Passing null removes grp:* and preserves user options'
+        );
+        assertDeepEqual(
+            setXkbGroupToggleOption(replaced, ''),
+            ['compose:ralt', 'lv3:ralt_switch', 'caps:escape'],
+            'Passing empty string removes grp:* and preserves user options'
+        );
+        assertDeepEqual(
+            setXkbGroupToggleOption(replaced, 'none'),
+            ['compose:ralt', 'lv3:ralt_switch', 'caps:escape'],
+            'Passing "none" removes grp:* and preserves user options'
+        );
+
+        // Rejects malformed non-grp:* tokens from being injected
+        assertDeepEqual(
+            setXkbGroupToggleOption(['compose:ralt'], 'compose:menu'),
+            ['compose:ralt'],
+            'Non-grp:* token is ignored by setXkbGroupToggleOption'
+        );
+
+        // Adding grp:* to null/empty xkb-options
+        assertDeepEqual(
+            setXkbGroupToggleOption(null, 'grp:alt_shift_toggle'),
+            ['grp:alt_shift_toggle'],
+            'Adding grp:* to null creates array with new token'
+        );
+        console.log('  -> PASS');
+    }
+
+    // --- Test 12: applyXkbGroupToggleSetting() GSettings integration & signal idempotency ---
+    console.log('Test 12: applyXkbGroupToggleSetting() with MockSettings...');
+    {
+        const mockInputSources = new MockSettings({
+            'xkb-options': ['compose:ralt', 'lv3:ralt_switch', 'grp_led:scroll'],
+        });
+
+        let changeCount = 0;
+        mockInputSources.connect('changed::xkb-options', () => {
+            changeCount++;
+        });
+
+        // Set Alt+Shift
+        const res1 = applyXkbGroupToggleSetting(mockInputSources, 'grp:alt_shift_toggle');
+        assert(res1.changed, 'First update sets grp:alt_shift_toggle');
+        assertEqual(changeCount, 1, 'One GSettings changed signal emitted');
+        assertDeepEqual(
+            mockInputSources.get_strv('xkb-options'),
+            ['compose:ralt', 'lv3:ralt_switch', 'grp_led:scroll', 'grp:alt_shift_toggle'],
+            'xkb-options updated preserving all user options'
+        );
+
+        // Applying same option again must be a no-op (no redundant signal)
+        const resSame = applyXkbGroupToggleSetting(mockInputSources, 'grp:alt_shift_toggle');
+        assert(!resSame.changed, 'Idempotent update does not rewrite GSettings');
+        assertEqual(changeCount, 1, 'No redundant changed signal emitted');
+
+        // Switch to Caps Lock
+        const res2 = applyXkbGroupToggleSetting(mockInputSources, 'grp:caps_toggle');
+        assert(res2.changed, 'Switching to grp:caps_toggle succeeds');
+        assertEqual(changeCount, 2, 'Second GSettings changed signal emitted');
+        assertDeepEqual(
+            mockInputSources.get_strv('xkb-options'),
+            ['compose:ralt', 'lv3:ralt_switch', 'grp_led:scroll', 'grp:caps_toggle'],
+            'grp:alt_shift_toggle replaced with grp:caps_toggle'
+        );
+
+        // Clear to None (system default)
+        const res3 = applyXkbGroupToggleSetting(mockInputSources, null);
+        assert(res3.changed, 'Clearing grp:* succeeds');
+        assertEqual(changeCount, 3, 'Third GSettings changed signal emitted');
+        assertDeepEqual(
+            mockInputSources.get_strv('xkb-options'),
+            ['compose:ralt', 'lv3:ralt_switch', 'grp_led:scroll'],
+            'Only grp:* removed; compose:*, lv3:*, grp_led:* preserved'
+        );
+
+        // Null settings handled gracefully
+        const resNull = applyXkbGroupToggleSetting(null, 'grp:alt_shift_toggle');
+        assert(!resNull.changed, 'Null settings returns changed=false');
+        console.log('  -> PASS');
+    }
+
+    // --- Test 13: getSystemInputSourceSwitchInfo() Win+Space indication ---
+    console.log('Test 13: getSystemInputSourceSwitchInfo() detection of system Win+Space...');
+    {
+        const wmDefault = new MockSettings({'switch-input-source': ['<Super>space']});
+        const infoDefault = getSystemInputSourceSwitchInfo({wmSettings: wmDefault});
+        assert(infoDefault.available, 'Schema available');
+        assert(infoDefault.hasWinSpace, '<Super>space detected as Win+Space');
+        assertDeepEqual(infoDefault.shortcuts, ['<Super>space'], 'Shortcuts reported accurately');
+
+        const wmMod4 = new MockSettings({'switch-input-source': ['<Mod4>Space', 'XF86Keyboard']});
+        const infoMod4 = getSystemInputSourceSwitchInfo({wmSettings: wmMod4});
+        assert(infoMod4.hasWinSpace, '<Mod4>Space normalized and detected as Win+Space');
+        assertEqual(infoMod4.shortcuts.length, 2, 'All system bindings returned');
+
+        const wmCustom = new MockSettings({'switch-input-source': ['<Shift>Alt_L']});
+        const infoCustom = getSystemInputSourceSwitchInfo({wmSettings: wmCustom});
+        assert(infoCustom.available, 'Custom binding still reports available');
+        assert(!infoCustom.hasWinSpace, '<Shift>Alt_L is not Win+Space');
+
+        const wmEmpty = new MockSettings({'switch-input-source': []});
+        const infoEmpty = getSystemInputSourceSwitchInfo({wmSettings: wmEmpty});
+        assert(infoEmpty.available, 'Empty binding reports available');
+        assert(!infoEmpty.hasWinSpace, 'Empty binding has hasWinSpace=false');
+
+        const infoError = getSystemInputSourceSwitchInfo({
+            getSettings: () => {
+                throw new Error('Missing schema');
+            },
+        });
+        assert(!infoError.available, 'Missing schema handled gracefully');
+        assert(!infoError.hasWinSpace, 'Missing schema reports hasWinSpace=false');
         console.log('  -> PASS');
     }
 

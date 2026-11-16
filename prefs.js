@@ -16,6 +16,11 @@ import {
     findDuplicateHotkeyKey,
     isModifierOnlyShortcut,
     normalizeShortcut,
+    XKB_SWITCH_PRESETS,
+    getXkbGroupToggleOption,
+    getOtherXkbOptions,
+    applyXkbGroupToggleSetting,
+    getSystemInputSourceSwitchInfo,
 } from './src/hotkeys.js';
 
 function _(str) {
@@ -738,6 +743,24 @@ class LiswitchShortcutsPage extends Adw.PreferencesPage {
         this._destroyId = this.connect('destroy', () => this.cleanup());
         this._shortcutGroup = new ShortcutRowGroup(this._settings, this._tracker, shortcutContext);
 
+        this._inputSourcesSettings = null;
+        try {
+            this._inputSourcesSettings = new Gio.Settings({
+                schema_id: 'org.gnome.desktop.input-sources',
+            });
+        } catch {
+            this._inputSourcesSettings = null;
+        }
+
+        this._wmKeybindingsSettings = null;
+        try {
+            this._wmKeybindingsSettings = new Gio.Settings({
+                schema_id: 'org.gnome.desktop.wm.keybindings',
+            });
+        } catch {
+            this._wmKeybindingsSettings = null;
+        }
+
         this._buildUi();
     }
 
@@ -763,6 +786,9 @@ class LiswitchShortcutsPage extends Adw.PreferencesPage {
             defaultShortcuts: ['<Control><Alt><Shift>space'],
         });
 
+        // --- Modifier-Only Switching (System XKB) ---
+        this._buildModifierSwitchingGroup();
+
         // --- Direct Selection Group ---
         const directGroup = new Adw.PreferencesGroup({
             title: _('Direct Layout Selection'),
@@ -779,19 +805,184 @@ class LiswitchShortcutsPage extends Adw.PreferencesPage {
             });
         }
 
-        // Single batched conflict check across all rows
+        // Single batched conflict check across all 6 rows
         this._shortcutGroup.refreshAllRows();
+    }
 
-        // --- Modifiers & System Architecture Notice ---
-        const noticeGroup = new Adw.PreferencesGroup({
-            title: _('Modifier-Only Shortcuts Note'),
+    _buildModifierSwitchingGroup() {
+        const xkbGroup = new Adw.PreferencesGroup({
+            title: _('Modifier-Only Switching (System XKB)'),
             description: _(
-                'GNOME Shell keybindings require a non-modifier key (like Space, Letter, or Digit). ' +
-                'Pure modifier combinations (such as Alt+Shift or Caps Lock) cannot be assigned via extension keybindings; ' +
-                'they are managed at the system XKB level in Settings → Keyboard → Special Character Entry or GNOME Tweaks.'
+                'GNOME Shell keybindings require a non-modifier key. Pure modifier combinations ' +
+                'are configured at the system XKB level via org.gnome.desktop.input-sources xkb-options ' +
+                '(other XKB options such as compose:* or lv3:* are preserved).'
             ),
         });
-        this.add(noticeGroup);
+        this.add(xkbGroup);
+
+        const presetLabels = {
+            none: _('None (system default)'),
+            alt_shift: _('Alt+Shift (grp:alt_shift_toggle)'),
+            ctrl_shift: _('Ctrl+Shift (grp:ctrl_shift_toggle)'),
+            caps: _('Caps Lock (grp:caps_toggle)'),
+        };
+
+        let xkbValues = [];
+        let isSyncingXkb = false;
+
+        const xkbRow = new Adw.ComboRow({
+            title: _('XKB Modifier Toggle'),
+            subtitle: _('Configure system XKB modifier-only layout switching'),
+        });
+        xkbGroup.add(xkbRow);
+
+        const winSpaceStatusLabel = new Gtk.Label({
+            valign: Gtk.Align.CENTER,
+            css_classes: ['dim-label'],
+        });
+
+        const winSpaceRow = new Adw.ActionRow({
+            title: _('Win+Space (System switch-input-source)'),
+            subtitle: _('Indicates the built-in GNOME input-source switching shortcut'),
+        });
+        winSpaceRow.add_suffix(winSpaceStatusLabel);
+        xkbGroup.add(winSpaceRow);
+
+        const syncXkbUi = () => {
+            if (!this._inputSourcesSettings) {
+                const fallbackModel = new Gtk.StringList();
+                for (const preset of XKB_SWITCH_PRESETS)
+                    fallbackModel.append(presetLabels[preset.id]);
+                isSyncingXkb = true;
+                try {
+                    xkbValues = XKB_SWITCH_PRESETS.map(p => p.option);
+                    xkbRow.model = fallbackModel;
+                    xkbRow.selected = 0;
+                    xkbRow.sensitive = false;
+                    xkbRow.subtitle = _('System schema org.gnome.desktop.input-sources is unavailable');
+                } finally {
+                    isSyncingXkb = false;
+                }
+                return;
+            }
+
+            const currentOpts = this._inputSourcesSettings.get_strv('xkb-options');
+            const activeGrp = getXkbGroupToggleOption(currentOpts);
+            const otherOpts = getOtherXkbOptions(currentOpts);
+
+            const model = new Gtk.StringList();
+            const nextValues = [];
+            for (const preset of XKB_SWITCH_PRESETS) {
+                model.append(presetLabels[preset.id]);
+                nextValues.push(preset.option);
+            }
+
+            let selectedIdx = nextValues.indexOf(activeGrp);
+            if (activeGrp && selectedIdx < 0) {
+                model.append(_('Custom (%s)').format(activeGrp));
+                nextValues.push(activeGrp);
+                selectedIdx = nextValues.length - 1;
+            } else if (selectedIdx < 0) {
+                selectedIdx = 0;
+            }
+
+            const modelChanged =
+                xkbValues.length !== nextValues.length ||
+                xkbValues.some((val, i) => val !== nextValues[i]);
+
+            isSyncingXkb = true;
+            try {
+                if (modelChanged) {
+                    xkbValues = nextValues;
+                    xkbRow.model = model;
+                }
+                if (xkbRow.selected !== selectedIdx)
+                    xkbRow.selected = selectedIdx;
+                xkbRow.sensitive = true;
+            } finally {
+                isSyncingXkb = false;
+            }
+
+            if (otherOpts.length > 0)
+                xkbRow.subtitle = _('Preserved XKB options: %s').format(otherOpts.join(', '));
+            else
+                xkbRow.subtitle = _('Configure system XKB modifier-only layout switching');
+        };
+
+        const syncWinSpaceUi = () => {
+            const info = getSystemInputSourceSwitchInfo({
+                wmSettings: this._wmKeybindingsSettings,
+            });
+
+            if (!info.available) {
+                winSpaceRow.subtitle = _('System schema org.gnome.desktop.wm.keybindings is unavailable');
+                winSpaceStatusLabel.label = _('Unavailable');
+                winSpaceStatusLabel.css_classes = ['dim-label'];
+                return;
+            }
+
+            if (info.hasWinSpace) {
+                const labels = info.shortcuts.map(formatShortcutLabel).join(', ');
+                winSpaceRow.subtitle = _('Active in system keybindings: %s').format(labels);
+                winSpaceStatusLabel.label = _('Active');
+                winSpaceStatusLabel.css_classes = ['accent'];
+                return;
+            }
+
+            if (info.shortcuts.length > 0) {
+                const labels = info.shortcuts.map(formatShortcutLabel).join(', ');
+                winSpaceRow.subtitle = _('Current system switch-input-source: %s (Win+Space not assigned)').format(labels);
+                winSpaceStatusLabel.label = _('Custom');
+                winSpaceStatusLabel.css_classes = ['dim-label'];
+                return;
+            }
+
+            let isOverridden = false;
+            try {
+                const rawBackup = this._settings.get_string('backup-system-shortcuts');
+                if (rawBackup) {
+                    const backupMap = JSON.parse(rawBackup);
+                    isOverridden = Boolean(backupMap?.['org.gnome.desktop.wm.keybindings:switch-input-source']);
+                }
+            } catch {
+                isOverridden = false;
+            }
+
+            if (isOverridden) {
+                winSpaceRow.subtitle = _('Overridden by a Liswitch shortcut above');
+                winSpaceStatusLabel.label = _('Overridden');
+                winSpaceStatusLabel.css_classes = ['warning'];
+            } else {
+                winSpaceRow.subtitle = _('Disabled in system keybindings');
+                winSpaceStatusLabel.label = _('Disabled');
+                winSpaceStatusLabel.css_classes = ['dim-label'];
+            }
+        };
+
+        const selectedSignalId = xkbRow.connect('notify::selected', () => {
+            if (isSyncingXkb || !this._inputSourcesSettings)
+                return;
+            const idx = xkbRow.selected;
+            if (idx < 0 || idx >= xkbValues.length)
+                return;
+            applyXkbGroupToggleSetting(this._inputSourcesSettings, xkbValues[idx]);
+        });
+        this._tracker.addCleanup(() => {
+            try {
+                xkbRow.disconnect(selectedSignalId);
+            } catch {
+                // Ignore
+            }
+        });
+
+        if (this._inputSourcesSettings)
+            this._tracker.connect(this._inputSourcesSettings, 'changed::xkb-options', syncXkbUi);
+        if (this._wmKeybindingsSettings)
+            this._tracker.connect(this._wmKeybindingsSettings, 'changed::switch-input-source', syncWinSpaceUi);
+        this._tracker.connect(this._settings, 'changed::backup-system-shortcuts', syncWinSpaceUi);
+
+        syncXkbUi();
+        syncWinSpaceUi();
     }
 
     cleanup() {
@@ -805,6 +996,8 @@ class LiswitchShortcutsPage extends Adw.PreferencesPage {
             }
         }
         this._tracker.dispose();
+        this._inputSourcesSettings = null;
+        this._wmKeybindingsSettings = null;
     }
 }
 

@@ -135,6 +135,142 @@ export function isModifierOnlyShortcut(shortcut) {
     return MODIFIER_KEY_NAMES.has(remainingKey);
 }
 
+export const XKB_GROUP_TOGGLE_PREFIX = 'grp:';
+
+export const XKB_SWITCH_PRESETS = Object.freeze([
+    Object.freeze({id: 'none', option: null}),
+    Object.freeze({id: 'alt_shift', option: 'grp:alt_shift_toggle'}),
+    Object.freeze({id: 'ctrl_shift', option: 'grp:ctrl_shift_toggle'}),
+    Object.freeze({id: 'caps', option: 'grp:caps_toggle'}),
+]);
+
+/**
+ * Extract the effective layout-switching (`grp:*`) token from an XKB options array.
+ * Leaves non-switching tokens such as `grp_led:*`, `compose:*`, `lv3:*` untouched.
+ *
+ * @param {string[]|null|undefined} xkbOptions - Array from org.gnome.desktop.input-sources xkb-options
+ * @returns {string|null} Active `grp:*` option (e.g. 'grp:alt_shift_toggle'), or null if none
+ */
+export function getXkbGroupToggleOption(xkbOptions) {
+    if (!Array.isArray(xkbOptions))
+        return null;
+
+    let active = null;
+    for (const opt of xkbOptions) {
+        if (typeof opt !== 'string')
+            continue;
+        const trimmed = opt.trim();
+        if (trimmed.startsWith(XKB_GROUP_TOGGLE_PREFIX))
+            active = trimmed;
+    }
+    return active;
+}
+
+/**
+ * Return all non-`grp:*` XKB options from an `xkb-options` array, preserving order.
+ *
+ * @param {string[]|null|undefined} xkbOptions - Array from org.gnome.desktop.input-sources xkb-options
+ * @returns {string[]} Preserved non-`grp:*` XKB options
+ */
+export function getOtherXkbOptions(xkbOptions) {
+    if (!Array.isArray(xkbOptions))
+        return [];
+
+    const preserved = [];
+    for (const opt of xkbOptions) {
+        if (typeof opt !== 'string')
+            continue;
+        const trimmed = opt.trim();
+        if (!trimmed || trimmed.startsWith(XKB_GROUP_TOGGLE_PREFIX))
+            continue;
+        preserved.push(trimmed);
+    }
+    return preserved;
+}
+
+/**
+ * Return a new `xkb-options` array with all existing `grp:*` tokens replaced by `grpOption`
+ * (or removed when `grpOption` is null/empty/'none'), preserving all other XKB options
+ * such as `compose:*`, `lv3:*`, `grp_led:*`, `caps:*`, etc.
+ *
+ * @param {string[]|null|undefined} xkbOptions - Current xkb-options array
+ * @param {string|null|undefined} grpOption - New `grp:*` token, or null/empty to clear
+ * @returns {string[]} New xkb-options array (does not mutate input)
+ */
+export function setXkbGroupToggleOption(xkbOptions, grpOption) {
+    const updated = getOtherXkbOptions(xkbOptions);
+
+    const next = typeof grpOption === 'string' ? grpOption.trim() : '';
+    if (next && next !== 'none' && next.startsWith(XKB_GROUP_TOGGLE_PREFIX))
+        updated.push(next);
+
+    return updated;
+}
+
+/**
+ * Update `org.gnome.desktop.input-sources` `xkb-options` with a new `grp:*` toggle token
+ * while preserving all other XKB options. Avoids redundant writes if unchanged.
+ *
+ * @param {Gio.Settings|object|null} inputSourcesSettings - GSettings for org.gnome.desktop.input-sources
+ * @param {string|null|undefined} grpOption - Target `grp:*` option, or null/empty to remove
+ * @returns {{changed: boolean, options: string[]}} Result of the update
+ */
+export function applyXkbGroupToggleSetting(inputSourcesSettings, grpOption) {
+    if (!inputSourcesSettings ||
+        typeof inputSourcesSettings.get_strv !== 'function' ||
+        typeof inputSourcesSettings.set_strv !== 'function')
+        return {changed: false, options: []};
+
+    const current = inputSourcesSettings.get_strv('xkb-options') || [];
+    const updated = setXkbGroupToggleOption(current, grpOption);
+
+    const isSame = current.length === updated.length && current.every((val, idx) => val === updated[idx]);
+    if (isSame)
+        return {changed: false, options: updated};
+
+    inputSourcesSettings.set_strv('xkb-options', updated);
+    return {changed: true, options: updated};
+}
+
+/**
+ * Read current system `switch-input-source` bindings from `org.gnome.desktop.wm.keybindings`
+ * and report whether the standard Win+Space (`<Super>space`) shortcut is active.
+ *
+ * @param {object} [options]
+ * @param {Gio.Settings|object|null} [options.wmSettings] - Pre-constructed wm.keybindings settings
+ * @param {Function|null} [options.getSettings] - Settings factory override
+ * @param {object|null} [options.schemaSource] - Schema source override
+ * @returns {{available: boolean, shortcuts: string[], hasWinSpace: boolean}}
+ */
+export function getSystemInputSourceSwitchInfo({wmSettings = null, getSettings = null, schemaSource = null} = {}) {
+    let settings = wmSettings;
+    if (!settings) {
+        try {
+            if (getSettings) {
+                settings = getSettings('org.gnome.desktop.wm.keybindings');
+            } else {
+                const sSource = schemaSource || Gio.SettingsSchemaSource.get_default();
+                if (sSource && !sSource.lookup('org.gnome.desktop.wm.keybindings', true))
+                    return {available: false, shortcuts: [], hasWinSpace: false};
+                settings = new Gio.Settings({schema_id: 'org.gnome.desktop.wm.keybindings'});
+            }
+        } catch {
+            return {available: false, shortcuts: [], hasWinSpace: false};
+        }
+    }
+
+    try {
+        const raw = settings.get_strv('switch-input-source');
+        const shortcuts = Array.isArray(raw)
+            ? raw.map(s => (typeof s === 'string' ? s.trim() : '')).filter(Boolean)
+            : [];
+        const hasWinSpace = shortcuts.some(s => normalizeShortcut(s) === '<super>space');
+        return {available: true, shortcuts, hasWinSpace};
+    } catch {
+        return {available: false, shortcuts: [], hasWinSpace: false};
+    }
+}
+
 /**
  * Scan system schemas for conflicts with Liswitch hotkeys.
  *
