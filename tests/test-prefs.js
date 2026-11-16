@@ -1,24 +1,48 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Liswitch: Unit tests for preferences window (prefs.js)
 
+import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk?version=4.0';
 import Gdk from 'gi://Gdk?version=4.0';
 
+// Register Shell Extensions gresource for standalone testing if available
 try {
-    Gtk.init();
+    const resPath = '/usr/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource';
+    const res = Gio.Resource.load(resPath);
+    Gio.resources_register(res);
 } catch {
     // Already registered or unavailable
+}
+
+// GNOME Shell's environment provides String.prototype.format; polyfill it for standalone GJS.
+if (typeof String.prototype.format !== 'function') {
+    String.prototype.format = function (...args) {
+        let idx = 0;
+        return this.replace(/%([%sd])/g, (_m, spec) => {
+            if (spec === '%')
+                return '%';
+            return idx < args.length ? String(args[idx++]) : '';
+        });
+    };
 }
 
 import {
     assert,
     assertEquals,
+    MockSettings,
     createMockSettings,
 } from './helpers.js';
 
-const {default: LiswitchPreferences} = await import('../prefs.js');
-const {normalizeShortcut} = await import('../src/hotkeys.js');
+const {
+    default: LiswitchPreferences,
+    SignalTracker,
+    ShortcutRowGroup,
+    findDuplicateAction,
+    getDefaultHotkeyTitles,
+    createShortcutContext,
+} = await import('../prefs.js');
+const {HOTKEY_KEYS} = await import('../src/hotkeys.js');
 
 class MockPreferencesWindow {
     constructor() {
@@ -48,52 +72,50 @@ function runTests() {
         print('  -> PASS');
     }
 
-    // Test 2: Validation of duplicate shortcuts between actions
+    // Test 2: Validation of duplicate shortcuts between actions (including convert-hotkey)
     print('Test 2: Validation of duplicate shortcuts between actions...');
     {
+        assert(HOTKEY_KEYS.includes('convert-hotkey'), 'HOTKEY_KEYS should include convert-hotkey');
+
         const settings = createMockSettings({
             'hotkey-next': ['<Control><Alt>space'],
             'hotkey-previous': ['<Control><Alt><Shift>space'],
+            'convert-hotkey': ['<Shift>Pause'],
         });
+        const titles = getDefaultHotkeyTitles();
 
-        const targetNorm = normalizeShortcut('<Control><Alt>space');
+        assertEquals(
+            findDuplicateAction(settings, 'hotkey-previous', '<Control><Alt>space', titles),
+            'Next Layout',
+            'Duplicate against hotkey-next should be detected'
+        );
 
-        // Check if assigning <Control><Alt>space to hotkey-previous would be duplicate
-        const allKeys = ['hotkey-next', 'hotkey-previous', 'hotkey-switch-1', 'hotkey-switch-2', 'hotkey-switch-3', 'hotkey-switch-4'];
-        let duplicateFound = false;
+        assertEquals(
+            findDuplicateAction(settings, 'hotkey-switch-1', '<Shift>Pause', titles),
+            'Convert Last Word',
+            'Duplicate against convert-hotkey should be detected from layout shortcut'
+        );
 
-        for (const k of allKeys) {
-            if (k === 'hotkey-previous')
-                continue;
-            const arr = settings.get_strv(k);
-            if (arr.some(s => normalizeShortcut(s) === targetNorm)) {
-                duplicateFound = true;
-                break;
-            }
-        }
+        assertEquals(
+            findDuplicateAction(settings, 'convert-hotkey', '<Ctrl><Alt>space', titles),
+            'Next Layout',
+            'Duplicate against hotkey-next should be detected from convert-hotkey'
+        );
 
-        assert(duplicateFound, 'Duplicate accelerator <Control><Alt>space should be detected');
-
-        // Empty shortcut (disabled) should not be considered duplicate
-        const emptyNorm = normalizeShortcut('');
-        let emptyDuplicate = false;
-        for (const k of allKeys) {
-            if (k === 'hotkey-switch-1')
-                continue;
-            const arr = settings.get_strv(k);
-            if (arr.some(s => normalizeShortcut(s) && normalizeShortcut(s) === emptyNorm)) {
-                emptyDuplicate = true;
-                break;
-            }
-        }
-        assertEquals(emptyDuplicate, false, 'Empty shortcut should never trigger duplicate conflict');
+        assertEquals(
+            findDuplicateAction(settings, 'hotkey-switch-1', '', titles),
+            null,
+            'Empty shortcut should never trigger duplicate conflict'
+        );
         print('  -> PASS');
     }
 
     // Test 3: Preferences window creation and page layout
     print('Test 3: Preferences window creation and page layout...');
-    const hasDisplay = Boolean(Gdk.Display.get_default());
+    const hasDisplay = Gtk.init_check() && Boolean(Gdk.Display.get_default());
     if (hasDisplay) {
+        Adw.init();
+
         const metadata = {
             uuid: 'liswitch@local',
             name: 'Liswitch',
@@ -107,7 +129,7 @@ function runTests() {
         const window = new MockPreferencesWindow();
         prefs.fillPreferencesWindow(window);
 
-        assertEquals(window.pages.length, 4, 'PreferencesWindow should have exactly 4 pages');
+        assertEquals(window.pages.length, 5, 'PreferencesWindow should have exactly 5 pages');
 
         const pageTitles = window.pages.map(p => p.title);
         print(`  Pages created: ${pageTitles.join(', ')}`);
@@ -115,14 +137,15 @@ function runTests() {
         assert(pageTitles.includes('General'), 'Should include General page');
         assert(pageTitles.includes('Shortcuts'), 'Should include Shortcuts page');
         assert(pageTitles.includes('Memory'), 'Should include Memory page');
+        assert(pageTitles.includes('Correction'), 'Should include Correction page');
         assert(pageTitles.includes('About'), 'Should include About page');
 
-        print('  -> PASS (all 4 pages instantiated successfully)');
+        print('  -> PASS (all 5 pages instantiated successfully)');
     } else {
         print('  -> SKIPPED (no graphical GdkDisplay in headless environment; tested via smoke-test.js)');
     }
 
-    // Test 4: Dynamic settings changes in prefs
+    // Test 4: Settings schema and key reactivity...
     print('Test 4: Settings schema and key reactivity...');
     {
         const settings = createMockSettings();
@@ -138,6 +161,73 @@ function runTests() {
         // Change OSD toggle
         settings.set_boolean('show-osd', false);
         assertEquals(settings.get_boolean('show-osd'), false, 'Settings show-osd toggled');
+
+        // Change text correction keys
+        settings.set_boolean('convert-text-enabled', true);
+        assertEquals(settings.get_boolean('convert-text-enabled'), true, 'Settings convert-text-enabled toggled');
+
+        settings.set_boolean('convert-double-shift', false);
+        assertEquals(settings.get_boolean('convert-double-shift'), false, 'Settings convert-double-shift toggled');
+
+        settings.set_strv('convert-hotkey', ['<Control><Shift>space']);
+        assertEquals(settings.get_strv('convert-hotkey')[0], '<Control><Shift>space', 'Settings convert-hotkey updated');
+
+        print('  -> PASS');
+    }
+
+    // Test 5: SignalTracker and ShortcutRowGroup batching & cleanup
+    print('Test 5: SignalTracker disposal and ShortcutRowGroup batched refresh...');
+    {
+        const settings = createMockSettings();
+        const desktopSettings = new MockSettings({'per-window': false});
+        const tracker = new SignalTracker();
+        const context = createShortcutContext();
+        let recorderStopped = 0;
+
+        tracker.addCleanup(() => {
+            recorderStopped++;
+        });
+        tracker.connect(settings, 'changed::osd-duration-ms', () => {});
+        tracker.connect(desktopSettings, 'changed::per-window', () => {});
+
+        const groupMgr = new ShortcutRowGroup(settings, tracker, context);
+        assertEquals(
+            settings.listenerCount('changed::backup-system-shortcuts'),
+            1,
+            'backup-system-shortcuts listener connected'
+        );
+        assertEquals(
+            settings.listenerCount('changed::freed-system-shortcuts'),
+            1,
+            'freed-system-shortcuts listener connected'
+        );
+
+        // Verify batched refresh passes the same computed conflicts array to all rows
+        const receivedConflicts = [];
+        groupMgr._rowRefreshCallbacks.push(c => receivedConflicts.push(c));
+        groupMgr._rowRefreshCallbacks.push(c => receivedConflicts.push(c));
+        groupMgr.refreshAllRows();
+        assertEquals(receivedConflicts.length, 2, 'Both row callbacks invoked');
+        assert(Array.isArray(receivedConflicts[0]), 'Conflicts array passed to row 1');
+        assert(receivedConflicts[0] === receivedConflicts[1], 'Same conflicts array instance shared across all rows');
+
+        // Verify withSuppressedSignals suppresses redundant intermediate refreshes
+        let suppressedCalls = 0;
+        groupMgr._rowRefreshCallbacks.push(() => {
+            suppressedCalls++;
+        });
+        groupMgr.withSuppressedSignals(() => {
+            settings.set_string('backup-system-shortcuts', '{"a":1}');
+            settings.set_string('freed-system-shortcuts', '{"b":2}');
+        });
+        assertEquals(suppressedCalls, 0, 'Intermediate signal refreshes suppressed during batch mutation');
+
+        // Verify idempotent disposal disconnects all GSettings and desktopSettings listeners
+        tracker.dispose();
+        tracker.dispose();
+        assertEquals(recorderStopped, 1, 'Cleanup callback executed exactly once');
+        assertEquals(settings.listenerCount(), 0, 'All Liswitch settings listeners disconnected on dispose');
+        assertEquals(desktopSettings.listenerCount(), 0, 'All desktopSettings listeners disconnected on dispose');
 
         print('  -> PASS');
     }

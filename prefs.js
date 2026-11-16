@@ -12,6 +12,8 @@ import {
     checkConflicts,
     freeSystemShortcut,
     restoreSystemShortcut,
+    cleanupUnusedSystemOverrides,
+    findDuplicateHotkeyKey,
     isModifierOnlyShortcut,
     normalizeShortcut,
 } from './src/hotkeys.js';
@@ -24,14 +26,115 @@ function _(str) {
     }
 }
 
-const ALL_HOTKEY_KEYS = [
-    'hotkey-next',
-    'hotkey-previous',
-    'hotkey-switch-1',
-    'hotkey-switch-2',
-    'hotkey-switch-3',
-    'hotkey-switch-4',
-];
+/**
+ * Tracks GObject/GSettings signal handler IDs and cleanup callbacks
+ * so pages release all external listeners and controllers on teardown.
+ */
+export class SignalTracker {
+    constructor() {
+        this._signals = [];
+        this._cleanups = [];
+    }
+
+    /**
+     * Connect a signal on an object and record its handler ID for disposal.
+     *
+     * @param {object|null} obj - GObject or emitter supporting connect/disconnect
+     * @param {string} signalName - Signal name
+     * @param {Function} callback - Signal handler
+     * @returns {number} Handler ID (or 0 if not connected)
+     */
+    connect(obj, signalName, callback) {
+        if (!obj || typeof obj.connect !== 'function')
+            return 0;
+        const id = obj.connect(signalName, callback);
+        this._signals.push({obj, id});
+        return id;
+    }
+
+    /**
+     * Register a synchronous cleanup callback to run on disposal.
+     *
+     * @param {Function} fn - Cleanup callback
+     */
+    addCleanup(fn) {
+        if (typeof fn === 'function')
+            this._cleanups.push(fn);
+    }
+
+    /**
+     * Run all registered cleanups and disconnect all tracked signals.
+     * Idempotent: subsequent calls are safe no-ops.
+     */
+    dispose() {
+        while (this._cleanups.length > 0) {
+            const fn = this._cleanups.pop();
+            try {
+                fn();
+            } catch {
+                // Ignore cleanup errors
+            }
+        }
+
+        while (this._signals.length > 0) {
+            const {obj, id} = this._signals.pop();
+            if (obj && id && typeof obj.disconnect === 'function') {
+                try {
+                    obj.disconnect(id);
+                } catch {
+                    // Ignore if already disconnected or disposed
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Build default human-readable action titles for all Liswitch hotkey keys.
+ *
+ * @returns {Map<string, string>}
+ */
+export function getDefaultHotkeyTitles() {
+    return new Map([
+        ['hotkey-next', _('Next Layout')],
+        ['hotkey-previous', _('Previous Layout')],
+        ['hotkey-switch-1', _('Switch to Layout %d').format(1)],
+        ['hotkey-switch-2', _('Switch to Layout %d').format(2)],
+        ['hotkey-switch-3', _('Switch to Layout %d').format(3)],
+        ['hotkey-switch-4', _('Switch to Layout %d').format(4)],
+        ['convert-hotkey', _('Convert Last Word')],
+    ]);
+}
+
+/**
+ * Create shared shortcut coordination state across preference pages.
+ *
+ * @returns {{activeRecorderStop: Function|null, actionTitles: Map<string, string>}}
+ */
+export function createShortcutContext() {
+    return {
+        activeRecorderStop: null,
+        actionTitles: getDefaultHotkeyTitles(),
+    };
+}
+
+/**
+ * Find if another Liswitch action already uses the given accelerator.
+ *
+ * @param {Gio.Settings|object} settings - Liswitch GSettings instance
+ * @param {string} currentKeyName - Key being assigned
+ * @param {string} newShortcut - Accelerator to check
+ * @param {Map<string, string>|null} [actionTitles] - Optional title lookup map
+ * @returns {string|null} Title of conflicting action, or null
+ */
+export function findDuplicateAction(settings, currentKeyName, newShortcut, actionTitles = null) {
+    const conflictKey = findDuplicateHotkeyKey(settings, currentKeyName, newShortcut);
+    if (!conflictKey)
+        return null;
+
+    const titles = actionTitles ?? getDefaultHotkeyTitles();
+    return titles.get(conflictKey) ?? conflictKey;
+}
 
 /**
  * Format a key accelerator string into a human-readable label.
@@ -54,6 +157,347 @@ function formatShortcutLabel(shortcut) {
 }
 
 /**
+ * Reusable shortcut row builder & conflict refresh coordinator.
+ * Shares Gtk.EventControllerKey recording, duplicate checking, system conflict
+ * detection/resolution, and batched checkConflicts() scans across pages.
+ */
+export class ShortcutRowGroup {
+    /**
+     * @param {Gio.Settings} settings - Liswitch GSettings instance
+     * @param {SignalTracker} tracker - Page signal/cleanup tracker
+     * @param {{activeRecorderStop: Function|null, actionTitles: Map<string, string>}|null} [context]
+     */
+    constructor(settings, tracker, context = null) {
+        this._settings = settings;
+        this._tracker = tracker;
+        this._context = context ?? createShortcutContext();
+        this._rowRefreshCallbacks = [];
+        this._suppressSignalDepth = 0;
+
+        this._tracker.connect(this._settings, 'changed::backup-system-shortcuts', () => {
+            if (this._suppressSignalDepth === 0)
+                this.refreshAllRows();
+        });
+        if (this._settings.settings_schema?.has_key?.('freed-system-shortcuts')) {
+            this._tracker.connect(this._settings, 'changed::freed-system-shortcuts', () => {
+                if (this._suppressSignalDepth === 0)
+                    this.refreshAllRows();
+            });
+        }
+    }
+
+    /**
+     * Execute a settings mutation without triggering redundant intermediate
+     * signal-driven conflict scans.
+     *
+     * @param {Function} fn
+     * @returns {*}
+     */
+    withSuppressedSignals(fn) {
+        this._suppressSignalDepth++;
+        try {
+            return fn();
+        } finally {
+            this._suppressSignalDepth--;
+        }
+    }
+
+    /**
+     * Scan system conflicts once and update all shortcut rows in this group.
+     */
+    refreshAllRows() {
+        const allConflicts = checkConflicts(this._settings);
+        for (const cb of this._rowRefreshCallbacks) {
+            try {
+                cb(allConflicts);
+            } catch {
+                // Ignore
+            }
+        }
+    }
+
+    /**
+     * Create an interactive shortcut row with conflict badge, reset button,
+     * and Gtk.EventControllerKey capture.
+     *
+     * @param {Adw.PreferencesGroup} group
+     * @param {object} config
+     * @param {string} config.keyName - GSettings strv key name
+     * @param {string} config.title - Human-readable action title
+     * @param {string} config.defaultDescription - Row subtitle when idle
+     * @param {string[]} config.defaultShortcuts - Default shortcut array for reset
+     * @param {boolean} [config.autoRefresh=false] - Whether to refresh immediately
+     * @returns {Adw.ActionRow}
+     */
+    createRow(group, {keyName, title, defaultDescription, defaultShortcuts, autoRefresh = false}) {
+        this._context.actionTitles.set(keyName, title);
+
+        const row = new Adw.ActionRow({
+            title,
+            subtitle: defaultDescription,
+        });
+        group.add(row);
+
+        // Conflict action button (Free / Restore in System)
+        const conflictBtn = new Gtk.Button({
+            valign: Gtk.Align.CENTER,
+            visible: false,
+        });
+        row.add_suffix(conflictBtn);
+
+        // Current conflict action for this row; refreshed by updateUi().
+        // The 'clicked' handler is connected exactly once and reads this
+        // slot, so repeated updateUi() calls never accumulate handlers.
+        let conflictAction = null;
+        conflictBtn.connect('clicked', () => {
+            const action = conflictAction;
+            if (!action)
+                return;
+            this.withSuppressedSignals(() => {
+                action();
+            });
+            this.refreshAllRows();
+        });
+
+        // Reset to default button
+        const resetBtn = new Gtk.Button({
+            icon_name: 'edit-undo-symbolic',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+            tooltip_text: _('Reset to default shortcut (%s)').format(
+                defaultShortcuts.length > 0 ? defaultShortcuts.join(', ') : _('Disabled')
+            ),
+        });
+        resetBtn.connect('clicked', () => {
+            this.withSuppressedSignals(() => {
+                this._settings.set_strv(keyName, defaultShortcuts);
+                cleanupUnusedSystemOverrides(this._settings);
+            });
+            this.refreshAllRows();
+        });
+        row.add_suffix(resetBtn);
+
+        // Record / Display button
+        const recordBtn = new Gtk.Button({
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+        });
+        row.add_suffix(recordBtn);
+
+        let isRecording = false;
+        let controller = null;
+        let controllerTarget = null;
+        let controllerSignalId = 0;
+
+        const updateUi = (conflicts = null) => {
+            if (isRecording)
+                return;
+
+            const currentArr = this._settings.get_strv(keyName);
+            const currentStr = currentArr[0]?.trim() ?? '';
+
+            recordBtn.label = formatShortcutLabel(currentStr);
+
+            const allConflicts = Array.isArray(conflicts)
+                ? conflicts
+                : checkConflicts(this._settings);
+            const keyConflicts = allConflicts.filter(c => c.hotkeyKey === keyName);
+
+            let backupMap = {};
+            try {
+                const bStr = this._settings.get_string('backup-system-shortcuts');
+                if (bStr)
+                    backupMap = JSON.parse(bStr);
+            } catch {
+                backupMap = {};
+            }
+
+            conflictAction = null;
+
+            if (!currentStr) {
+                row.subtitle = `${defaultDescription} (${_('Disabled')})`;
+                conflictBtn.visible = false;
+                return;
+            }
+
+            if (isModifierOnlyShortcut(currentStr)) {
+                row.subtitle = `⚠️ ${_('Modifier-only shortcut cannot be bound in GNOME Shell: %s').format(currentStr)}`;
+                conflictBtn.visible = false;
+                return;
+            }
+
+            if (keyConflicts.length > 0) {
+                const conf = keyConflicts[0];
+                row.subtitle = `⚠️ ${_('Conflict: shortcut "%s" is assigned to %s (%s)').format(
+                    conf.shortcut,
+                    conf.schemaKey,
+                    conf.schemaId
+                )}`;
+
+                conflictBtn.visible = true;
+                conflictBtn.label = _('Free in System');
+                conflictBtn.css_classes = ['suggested-action'];
+
+                conflictAction = () => freeSystemShortcut(conf, this._settings);
+            } else {
+                // Check if this shortcut was previously freed and is stored in backups
+                let freedEntry = null;
+                const normShort = normalizeShortcut(currentStr);
+
+                for (const [, entry] of Object.entries(backupMap)) {
+                    const entryVals = Array.isArray(entry.value) ? entry.value : [entry.value];
+                    if (entryVals.some(v => normalizeShortcut(v) === normShort)) {
+                        freedEntry = entry;
+                        break;
+                    }
+                }
+
+                if (freedEntry) {
+                    row.subtitle = _('Overriding system shortcut: %s (%s)').format(
+                        freedEntry.schemaKey,
+                        freedEntry.schemaId
+                    );
+
+                    conflictBtn.visible = true;
+                    conflictBtn.label = _('Restore in System');
+                    conflictBtn.css_classes = [];
+
+                    conflictAction = () => restoreSystemShortcut(
+                        freedEntry.schemaId,
+                        freedEntry.schemaKey,
+                        this._settings
+                    );
+                } else {
+                    row.subtitle = defaultDescription;
+                    conflictBtn.visible = false;
+                }
+            }
+        };
+
+        const stopRecording = (refresh = true) => {
+            if (!isRecording)
+                return;
+            isRecording = false;
+            if (this._context.activeRecorderStop === stopRecording)
+                this._context.activeRecorderStop = null;
+
+            if (controller) {
+                if (controllerSignalId) {
+                    try {
+                        controller.disconnect(controllerSignalId);
+                    } catch {
+                        // Ignore
+                    }
+                    controllerSignalId = 0;
+                }
+
+                const target = controllerTarget ?? recordBtn.get_root() ?? recordBtn;
+                try {
+                    target.remove_controller(controller);
+                } catch {
+                    // Ignore
+                }
+                controller = null;
+                controllerTarget = null;
+            }
+
+            recordBtn.remove_css_class('suggested-action');
+            if (refresh)
+                updateUi();
+        };
+
+        const startRecording = () => {
+            if (this._context.activeRecorderStop)
+                this._context.activeRecorderStop(true);
+
+            isRecording = true;
+            this._context.activeRecorderStop = stopRecording;
+
+            recordBtn.add_css_class('suggested-action');
+            recordBtn.label = _('Press keys…');
+            row.subtitle = _('Press keys now — Escape to cancel, Backspace to disable');
+
+            controller = new Gtk.EventControllerKey();
+            controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE);
+
+            controllerSignalId = controller.connect('key-pressed', (_c, keyval, _keycode, state) => {
+                // 1. Escape: Cancel recording without modifying settings
+                if (keyval === Gdk.KEY_Escape) {
+                    stopRecording(true);
+                    return Gdk.EVENT_STOP;
+                }
+
+                const mask = state & Gtk.accelerator_get_default_mod_mask();
+
+                // 2. Backspace (unmodified): Clear shortcut (empty is valid, means Disabled)
+                if (keyval === Gdk.KEY_BackSpace && mask === 0) {
+                    this.withSuppressedSignals(() => {
+                        this._settings.set_strv(keyName, []);
+                        cleanupUnusedSystemOverrides(this._settings);
+                    });
+                    stopRecording(false);
+                    this.refreshAllRows();
+                    return Gdk.EVENT_STOP;
+                }
+
+                // 3. Modifier-only keys: Wait for a non-modifier key
+                if (!Gtk.accelerator_valid(keyval, mask))
+                    return Gdk.EVENT_STOP;
+
+                // 4. Form valid accelerator name
+                const accel = Gtk.accelerator_name(keyval, mask);
+                if (!accel)
+                    return Gdk.EVENT_STOP;
+
+                // 5. Validation: check duplicates among all Liswitch actions
+                const duplicateActionTitle = findDuplicateAction(
+                    this._settings,
+                    keyName,
+                    accel,
+                    this._context.actionTitles
+                );
+                if (duplicateActionTitle) {
+                    stopRecording(true);
+                    row.subtitle = `⚠️ ${_('Shortcut "%s" is already assigned to "%s".').format(accel, duplicateActionTitle)}`;
+                    return Gdk.EVENT_STOP;
+                }
+
+                // 6. Save valid combination
+                this.withSuppressedSignals(() => {
+                    this._settings.set_strv(keyName, [accel]);
+                    cleanupUnusedSystemOverrides(this._settings);
+                });
+                stopRecording(false);
+                this.refreshAllRows();
+                return Gdk.EVENT_STOP;
+            });
+
+            controllerTarget = recordBtn.get_root() ?? recordBtn;
+            controllerTarget.add_controller(controller);
+        };
+
+        recordBtn.connect('clicked', () => {
+            if (isRecording)
+                stopRecording(true);
+            else
+                startRecording();
+        });
+
+        this._tracker.addCleanup(() => stopRecording(false));
+        this._tracker.connect(this._settings, `changed::${keyName}`, () => {
+            if (this._suppressSignalDepth === 0)
+                updateUi();
+        });
+        this._rowRefreshCallbacks.push(updateUi);
+
+        if (autoRefresh)
+            updateUi();
+
+        return row;
+    }
+}
+
+/**
  * Page 1: General Preferences («Основное»)
  *
  * Configures the top panel indicator, mouse scroll switching, and visual OSD overlay.
@@ -70,6 +514,8 @@ class LiswitchGeneralPage extends Adw.PreferencesPage {
         });
 
         this._settings = settings;
+        this._tracker = new SignalTracker();
+        this._destroyId = this.connect('destroy', () => this.cleanup());
 
         // --- Panel Indicator Group ---
         const indicatorGroup = new Adw.PreferencesGroup({
@@ -200,7 +646,7 @@ class LiswitchGeneralPage extends Adw.PreferencesPage {
                 this._settings.set_uint('osd-duration-ms', val);
             });
 
-            this._settings.connect('changed::osd-duration-ms', () => {
+            this._tracker.connect(this._settings, 'changed::osd-duration-ms', () => {
                 const val = this._settings.get_uint('osd-duration-ms') || 1000;
                 if (Math.round(durationRow.get_value()) !== val)
                     durationRow.set_value(val);
@@ -255,6 +701,19 @@ class LiswitchGeneralPage extends Adw.PreferencesPage {
             Gio.SettingsBindFlags.DEFAULT
         );
     }
+
+    cleanup() {
+        const destroyId = this._destroyId;
+        this._destroyId = 0;
+        if (destroyId) {
+            try {
+                this.disconnect(destroyId);
+            } catch {
+                // Ignore
+            }
+        }
+        this._tracker.dispose();
+    }
 }
 
 /**
@@ -268,33 +727,18 @@ class LiswitchShortcutsPage extends Adw.PreferencesPage {
         GObject.registerClass(this);
     }
 
-    constructor(settings) {
+    constructor(settings, shortcutContext = null) {
         super({
             title: _('Shortcuts'),
             icon_name: 'input-keyboard-symbolic',
         });
 
         this._settings = settings;
-        this._rowRefreshCallbacks = [];
-        this._activeRecorderStop = null;
-        this._actionTitles = new Map();
+        this._tracker = new SignalTracker();
+        this._destroyId = this.connect('destroy', () => this.cleanup());
+        this._shortcutGroup = new ShortcutRowGroup(this._settings, this._tracker, shortcutContext);
 
         this._buildUi();
-
-        // Refresh rows when backup settings change
-        this._settings.connect('changed::backup-system-shortcuts', () => {
-            this._refreshAllRows();
-        });
-    }
-
-    _refreshAllRows() {
-        for (const cb of this._rowRefreshCallbacks) {
-            try {
-                cb();
-            } catch {
-                // Ignore
-            }
-        }
     }
 
     _buildUi() {
@@ -305,21 +749,19 @@ class LiswitchShortcutsPage extends Adw.PreferencesPage {
         });
         this.add(switchGroup);
 
-        this._createShortcutRow(
-            switchGroup,
-            'hotkey-next',
-            _('Next Layout'),
-            _('Cycle forward through available input sources'),
-            ['<Control><Alt>space']
-        );
+        this._shortcutGroup.createRow(switchGroup, {
+            keyName: 'hotkey-next',
+            title: _('Next Layout'),
+            defaultDescription: _('Cycle forward through available input sources'),
+            defaultShortcuts: ['<Control><Alt>space'],
+        });
 
-        this._createShortcutRow(
-            switchGroup,
-            'hotkey-previous',
-            _('Previous Layout'),
-            _('Cycle backward through available input sources'),
-            ['<Control><Alt><Shift>space']
-        );
+        this._shortcutGroup.createRow(switchGroup, {
+            keyName: 'hotkey-previous',
+            title: _('Previous Layout'),
+            defaultDescription: _('Cycle backward through available input sources'),
+            defaultShortcuts: ['<Control><Alt><Shift>space'],
+        });
 
         // --- Direct Selection Group ---
         const directGroup = new Adw.PreferencesGroup({
@@ -329,14 +771,16 @@ class LiswitchShortcutsPage extends Adw.PreferencesPage {
         this.add(directGroup);
 
         for (let i = 1; i <= 4; i++) {
-            this._createShortcutRow(
-                directGroup,
-                `hotkey-switch-${i}`,
-                _('Switch to Layout %d').format(i),
-                _('Directly activate layout at index %d').format(i - 1),
-                []
-            );
+            this._shortcutGroup.createRow(directGroup, {
+                keyName: `hotkey-switch-${i}`,
+                title: _('Switch to Layout %d').format(i),
+                defaultDescription: _('Directly activate layout at index %d').format(i - 1),
+                defaultShortcuts: [],
+            });
         }
+
+        // Single batched conflict check across all rows
+        this._shortcutGroup.refreshAllRows();
 
         // --- Modifiers & System Architecture Notice ---
         const noticeGroup = new Adw.PreferencesGroup({
@@ -350,250 +794,17 @@ class LiswitchShortcutsPage extends Adw.PreferencesPage {
         this.add(noticeGroup);
     }
 
-    /**
-     * Find if another Liswitch action already uses the given accelerator.
-     *
-     * @param {string} currentKeyName - Key being assigned
-     * @param {string} newShortcut - Accelerator to check
-     * @returns {string|null} - Title of conflicting action, or null
-     */
-    _findDuplicateAction(currentKeyName, newShortcut) {
-        if (!newShortcut || !newShortcut.trim())
-            return null;
-
-        const targetNorm = normalizeShortcut(newShortcut);
-
-        for (const otherKey of ALL_HOTKEY_KEYS) {
-            if (otherKey === currentKeyName)
-                continue;
-
-            const otherArr = this._settings.get_strv(otherKey);
-            for (const item of otherArr) {
-                if (normalizeShortcut(item) === targetNorm)
-                    return this._actionTitles.get(otherKey) ?? otherKey;
+    cleanup() {
+        const destroyId = this._destroyId;
+        this._destroyId = 0;
+        if (destroyId) {
+            try {
+                this.disconnect(destroyId);
+            } catch {
+                // Ignore
             }
         }
-
-        return null;
-    }
-
-    _createShortcutRow(group, keyName, title, defaultDescription, defaultShortcuts) {
-        this._actionTitles.set(keyName, title);
-
-        const row = new Adw.ActionRow({
-            title,
-            subtitle: defaultDescription,
-        });
-        group.add(row);
-
-        // Conflict action button (Free / Restore in System)
-        const conflictBtn = new Gtk.Button({
-            valign: Gtk.Align.CENTER,
-            visible: false,
-        });
-        row.add_suffix(conflictBtn);
-
-        // Reset to default button
-        const resetBtn = new Gtk.Button({
-            icon_name: 'edit-undo-symbolic',
-            valign: Gtk.Align.CENTER,
-            css_classes: ['flat'],
-            tooltip_text: _('Reset to default shortcut (%s)').format(
-                defaultShortcuts.length > 0 ? defaultShortcuts.join(', ') : _('Disabled')
-            ),
-        });
-        resetBtn.connect('clicked', () => {
-            this._settings.set_strv(keyName, defaultShortcuts);
-            this._refreshAllRows();
-        });
-        row.add_suffix(resetBtn);
-
-        // Record / Display button
-        const recordBtn = new Gtk.Button({
-            valign: Gtk.Align.CENTER,
-            css_classes: ['flat'],
-        });
-        row.add_suffix(recordBtn);
-
-        let isRecording = false;
-        let controller = null;
-
-        const stopRecording = () => {
-            if (!isRecording)
-                return;
-            isRecording = false;
-            this._activeRecorderStop = null;
-
-            if (controller) {
-                const root = recordBtn.get_root();
-                const target = root ?? recordBtn;
-                try {
-                    target.remove_controller(controller);
-                } catch {
-                    // Ignore
-                }
-                controller = null;
-            }
-
-            recordBtn.remove_css_class('suggested-action');
-            updateUi();
-        };
-
-        const startRecording = () => {
-            if (this._activeRecorderStop)
-                this._activeRecorderStop();
-
-            isRecording = true;
-            this._activeRecorderStop = stopRecording;
-
-            recordBtn.add_css_class('suggested-action');
-            recordBtn.label = _('Press keys…');
-            row.subtitle = _('Press keys now — Escape to cancel, Backspace to disable');
-
-            controller = new Gtk.EventControllerKey();
-            controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE);
-
-            controller.connect('key-pressed', (_c, keyval, _keycode, state) => {
-                // 1. Escape: Cancel recording without modifying settings
-                if (keyval === Gdk.KEY_Escape) {
-                    stopRecording();
-                    return Gdk.EVENT_STOP;
-                }
-
-                // 2. Backspace: Clear shortcut (empty is valid, means Disabled)
-                if (keyval === Gdk.KEY_BackSpace) {
-                    this._settings.set_strv(keyName, []);
-                    stopRecording();
-                    this._refreshAllRows();
-                    return Gdk.EVENT_STOP;
-                }
-
-                // 3. Modifier-only keys: Wait for a non-modifier key
-                const mask = state & Gtk.accelerator_get_default_mod_mask();
-                if (!Gtk.accelerator_valid(keyval, mask))
-                    return Gdk.EVENT_STOP;
-
-                // 4. Form valid accelerator name
-                const accel = Gtk.accelerator_name(keyval, mask);
-                if (!accel)
-                    return Gdk.EVENT_STOP;
-
-                // 5. Validation: check duplicates among Liswitch actions
-                const duplicateActionTitle = this._findDuplicateAction(keyName, accel);
-                if (duplicateActionTitle) {
-                    stopRecording();
-                    row.subtitle = `⚠️ ${_('Shortcut "%s" is already assigned to "%s".').format(accel, duplicateActionTitle)}`;
-                    return Gdk.EVENT_STOP;
-                }
-
-                // 6. Save valid combination
-                this._settings.set_strv(keyName, [accel]);
-                stopRecording();
-                this._refreshAllRows();
-                return Gdk.EVENT_STOP;
-            });
-
-            const root = recordBtn.get_root();
-            const target = root ?? recordBtn;
-            target.add_controller(controller);
-        };
-
-        recordBtn.connect('clicked', () => {
-            if (isRecording)
-                stopRecording();
-            else
-                startRecording();
-        });
-
-        const updateUi = () => {
-            if (isRecording)
-                return;
-
-            const currentArr = this._settings.get_strv(keyName);
-            const currentStr = currentArr[0]?.trim() ?? '';
-
-            recordBtn.label = formatShortcutLabel(currentStr);
-
-            const allConflicts = checkConflicts(this._settings);
-            const keyConflicts = allConflicts.filter(c => c.hotkeyKey === keyName);
-
-            let backupMap = {};
-            try {
-                const bStr = this._settings.get_string('backup-system-shortcuts');
-                if (bStr)
-                    backupMap = JSON.parse(bStr);
-            } catch {
-                backupMap = {};
-            }
-
-            if (!currentStr) {
-                row.subtitle = `${defaultDescription} (${_('Disabled')})`;
-                conflictBtn.visible = false;
-                return;
-            }
-
-            if (isModifierOnlyShortcut(currentStr)) {
-                row.subtitle = `⚠️ ${_('Modifier-only shortcut cannot be bound in GNOME Shell: %s').format(currentStr)}`;
-                conflictBtn.visible = false;
-                return;
-            }
-
-            if (keyConflicts.length > 0) {
-                const conf = keyConflicts[0];
-                row.subtitle = `⚠️ ${_('Conflict: shortcut "%s" is assigned to %s (%s)').format(
-                    conf.shortcut,
-                    conf.schemaKey,
-                    conf.schemaId
-                )}`;
-
-                conflictBtn.visible = true;
-                conflictBtn.label = _('Free in System');
-                conflictBtn.css_classes = ['suggested-action'];
-
-                conflictBtn.disconnectByFunc?.();
-                conflictBtn.connect('clicked', () => {
-                    freeSystemShortcut(conf, this._settings);
-                    this._refreshAllRows();
-                });
-            } else {
-                // Check if this shortcut was previously freed and is stored in backups
-                let freedEntry = null;
-                const normShort = normalizeShortcut(currentStr);
-
-                for (const [, entry] of Object.entries(backupMap)) {
-                    const entryVals = Array.isArray(entry.value) ? entry.value : [entry.value];
-                    if (entryVals.some(v => normalizeShortcut(v) === normShort)) {
-                        freedEntry = entry;
-                        break;
-                    }
-                }
-
-                if (freedEntry) {
-                    row.subtitle = _('Overriding system shortcut: %s (%s)').format(
-                        freedEntry.schemaKey,
-                        freedEntry.schemaId
-                    );
-
-                    conflictBtn.visible = true;
-                    conflictBtn.label = _('Restore in System');
-                    conflictBtn.css_classes = [];
-
-                    conflictBtn.disconnectByFunc?.();
-                    conflictBtn.connect('clicked', () => {
-                        restoreSystemShortcut(freedEntry.schemaId, freedEntry.schemaKey, this._settings);
-                        this._refreshAllRows();
-                    });
-                } else {
-                    row.subtitle = defaultDescription;
-                    conflictBtn.visible = false;
-                }
-            }
-        };
-
-        this._settings.connect(`changed::${keyName}`, updateUi);
-        this._rowRefreshCallbacks.push(updateUi);
-
-        updateUi();
+        this._tracker.dispose();
     }
 }
 
@@ -614,6 +825,8 @@ class LiswitchMemoryPage extends Adw.PreferencesPage {
         });
 
         this._settings = settings;
+        this._tracker = new SignalTracker();
+        this._destroyId = this.connect('destroy', () => this.cleanup());
         this._desktopSettings = null;
         try {
             this._desktopSettings = new Gio.Settings({
@@ -667,7 +880,7 @@ class LiswitchMemoryPage extends Adw.PreferencesPage {
         };
 
         if (this._desktopSettings)
-            this._desktopSettings.connect('changed::per-window', updateWarningState);
+            this._tracker.connect(this._desktopSettings, 'changed::per-window', updateWarningState);
         updateWarningState();
 
         // --- Memory Mode Group ---
@@ -700,7 +913,7 @@ class LiswitchMemoryPage extends Adw.PreferencesPage {
                 this._settings.set_string('memory-mode', modeValues[idx]);
         });
 
-        this._settings.connect('changed::memory-mode', () => {
+        this._tracker.connect(this._settings, 'changed::memory-mode', () => {
             const val = this._settings.get_string('memory-mode');
             const i = modeValues.indexOf(val);
             if (i >= 0 && modeRow.selected !== i)
@@ -729,7 +942,7 @@ class LiswitchMemoryPage extends Adw.PreferencesPage {
                 this._settings.set_string('default-layout-mode', defaultLayoutValues[idx]);
         });
 
-        this._settings.connect('changed::default-layout-mode', () => {
+        this._tracker.connect(this._settings, 'changed::default-layout-mode', () => {
             const val = this._settings.get_string('default-layout-mode');
             const i = defaultLayoutValues.indexOf(val);
             if (i >= 0 && defaultRow.selected !== i)
@@ -813,8 +1026,21 @@ class LiswitchMemoryPage extends Adw.PreferencesPage {
             refreshExcludedList();
         });
 
-        this._settings.connect('changed::memory-excluded-apps', refreshExcludedList);
+        this._tracker.connect(this._settings, 'changed::memory-excluded-apps', refreshExcludedList);
         refreshExcludedList();
+    }
+
+    cleanup() {
+        const destroyId = this._destroyId;
+        this._destroyId = 0;
+        if (destroyId) {
+            try {
+                this.disconnect(destroyId);
+            } catch {
+                // Ignore
+            }
+        }
+        this._tracker.dispose();
     }
 }
 
@@ -927,6 +1153,8 @@ class LiswitchAboutPage extends Adw.PreferencesPage {
         sourceRow.add_suffix(openLinkBtn);
         linksGroup.add(sourceRow);
     }
+
+    cleanup() {}
 }
 
 /**
@@ -940,13 +1168,16 @@ class LiswitchCorrectionPage extends Adw.PreferencesPage {
         GObject.registerClass(this);
     }
 
-    constructor(settings) {
+    constructor(settings, shortcutContext = null) {
         super({
             title: _('Correction'),
             icon_name: 'edit-find-replace-symbolic',
         });
 
         this._settings = settings;
+        this._tracker = new SignalTracker();
+        this._destroyId = this.connect('destroy', () => this.cleanup());
+        this._shortcutGroup = new ShortcutRowGroup(this._settings, this._tracker, shortcutContext);
 
         // Security / Privacy Warning Group
         const infoGroup = new Adw.PreferencesGroup({
@@ -997,112 +1228,65 @@ class LiswitchCorrectionPage extends Adw.PreferencesPage {
         });
         this.add(shortcutGroup);
 
-        this._createShortcutRow(shortcutGroup);
+        this._shortcutGroup.createRow(shortcutGroup, {
+            keyName: 'convert-hotkey',
+            title: _('Convert Last Word'),
+            defaultDescription: _('Shortcut to trigger conversion of the most recently typed word'),
+            defaultShortcuts: ['<Shift>Pause'],
+        });
+        this._shortcutGroup.refreshAllRows();
     }
 
-    _createShortcutRow(group) {
-        const row = new Adw.ActionRow({
-            title: _('Convert Last Word'),
-            subtitle: _('Shortcut to trigger conversion of the most recently typed word'),
-        });
-        group.add(row);
-
-        const resetBtn = new Gtk.Button({
-            icon_name: 'edit-undo-symbolic',
-            valign: Gtk.Align.CENTER,
-            css_classes: ['flat'],
-            tooltip_text: _('Reset to default shortcut (<Shift>Pause)'),
-        });
-        resetBtn.connect('clicked', () => {
-            this._settings.set_strv('convert-hotkey', ['<Shift>Pause']);
-            updateBtn();
-        });
-        row.add_suffix(resetBtn);
-
-        const recordBtn = new Gtk.Button({
-            valign: Gtk.Align.CENTER,
-            css_classes: ['flat'],
-        });
-        row.add_suffix(recordBtn);
-
-        const updateBtn = () => {
-            const arr = this._settings.get_strv('convert-hotkey');
-            const val = arr[0] || '';
-            recordBtn.label = formatShortcutLabel(val);
-        };
-        updateBtn();
-
-        let isRecording = false;
-        let controller = null;
-
-        const stopRecording = () => {
-            if (!isRecording)
-                return;
-            isRecording = false;
-            if (controller) {
-                const root = recordBtn.get_root();
-                const target = root ?? recordBtn;
-                try {
-                    target.remove_controller(controller);
-                } catch {
-                    // Ignore
-                }
-                controller = null;
+    cleanup() {
+        const destroyId = this._destroyId;
+        this._destroyId = 0;
+        if (destroyId) {
+            try {
+                this.disconnect(destroyId);
+            } catch {
+                // Ignore
             }
-            recordBtn.css_classes = ['flat'];
-            updateBtn();
-        };
-
-        recordBtn.connect('clicked', () => {
-            if (isRecording) {
-                stopRecording();
-                return;
-            }
-
-            isRecording = true;
-            recordBtn.label = _('Press keys… (Esc: cancel, Backspace: disable)');
-            recordBtn.css_classes = ['suggested-action'];
-
-            controller = new Gtk.EventControllerKey({
-                propagation_phase: Gtk.PropagationPhase.CAPTURE,
-            });
-
-            controller.connect('key-pressed', (_ctrl, keyval, _keycode, state) => {
-                const cleanState = state & Gtk.accelerator_get_default_mod_mask();
-                if (keyval === Gdk.KEY_Escape) {
-                    stopRecording();
-                    return Gdk.EVENT_STOP;
-                }
-                if (keyval === Gdk.KEY_BackSpace && cleanState === 0) {
-                    this._settings.set_strv('convert-hotkey', []);
-                    stopRecording();
-                    return Gdk.EVENT_STOP;
-                }
-                const accelName = Gtk.accelerator_name(keyval, cleanState);
-                if (accelName && !isModifierOnlyShortcut(accelName)) {
-                    this._settings.set_strv('convert-hotkey', [accelName]);
-                    stopRecording();
-                    return Gdk.EVENT_STOP;
-                }
-                return Gdk.EVENT_PROPAGATE;
-            });
-
-            const root = recordBtn.get_root();
-            const target = root ?? recordBtn;
-            target.add_controller(controller);
-        });
-
-        this._settings.connect('changed::convert-hotkey', () => updateBtn());
+        }
+        this._tracker.dispose();
     }
 }
 
 export default class LiswitchPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
-        window.add(new LiswitchGeneralPage(settings));
-        window.add(new LiswitchShortcutsPage(settings));
-        window.add(new LiswitchMemoryPage(settings));
-        window.add(new LiswitchCorrectionPage(settings));
-        window.add(new LiswitchAboutPage(settings, this.metadata));
+        const shortcutContext = createShortcutContext();
+
+        const pages = [
+            new LiswitchGeneralPage(settings),
+            new LiswitchShortcutsPage(settings, shortcutContext),
+            new LiswitchMemoryPage(settings),
+            new LiswitchCorrectionPage(settings, shortcutContext),
+            new LiswitchAboutPage(settings, this.metadata),
+        ];
+
+        for (const page of pages)
+            window.add(page);
+
+        if (typeof window.connect === 'function') {
+            const cleanupAll = () => {
+                for (const page of pages)
+                    page.cleanup?.();
+            };
+            const closeId = window.connect('close-request', () => {
+                cleanupAll();
+                return false;
+            });
+            const destroyId = window.connect('destroy', () => {
+                cleanupAll();
+                try {
+                    if (closeId)
+                        window.disconnect(closeId);
+                    if (destroyId)
+                        window.disconnect(destroyId);
+                } catch {
+                    // Ignore
+                }
+            });
+        }
     }
 }
