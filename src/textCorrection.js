@@ -47,21 +47,73 @@ const EVDEV_V = 47;
 const SENSITIVE_PATTERNS = [
     'password', 'пароль', 'keyring', 'polkit', 'keepass',
     '1password', 'bitwarden', 'auth', 'pin', 'unlock', 'gdm', 'credential',
+    'login', 'sign in', 'sign-in', 'signin', 'vault', 'ssh', 'sudo', 'gpg',
 ];
+
+// Cursor navigation / editing keys without a Unicode value. Pressing any of
+// them moves the caret away from the end of the tracked word, so the buffer
+// must be dropped. Built lazily because Clutter is absent in standalone tests.
+const NAVIGATION_KEY_NAMES = [
+    'KEY_Left', 'KEY_Right', 'KEY_Up', 'KEY_Down',
+    'KEY_Home', 'KEY_End', 'KEY_Page_Up', 'KEY_Page_Down',
+    'KEY_Delete', 'KEY_Insert',
+    'KEY_KP_Left', 'KEY_KP_Right', 'KEY_KP_Up', 'KEY_KP_Down',
+    'KEY_KP_Home', 'KEY_KP_End', 'KEY_KP_Page_Up', 'KEY_KP_Page_Down',
+    'KEY_KP_Delete', 'KEY_KP_Insert',
+];
+
+let _navigationKeysyms = null;
+
+function _getNavigationKeysyms() {
+    if (_navigationKeysyms)
+        return _navigationKeysyms;
+    _navigationKeysyms = new Set();
+    if (Clutter) {
+        for (const name of NAVIGATION_KEY_NAMES) {
+            const keysym = Clutter[name];
+            if (typeof keysym === 'number')
+                _navigationKeysyms.add(keysym);
+        }
+    }
+    return _navigationKeysyms;
+}
+
+function _getBufferResetModifierMask() {
+    const M = Clutter?.ModifierType;
+    if (!M)
+        return 0;
+    return (M.CONTROL_MASK ?? 0) | (M.MOD1_MASK ?? 0) |
+        (M.SUPER_MASK ?? 0) | (M.META_MASK ?? 0);
+}
+
+function _countChangedChars(sourceText, convertedText) {
+    const srcChars = Array.from(sourceText);
+    const dstChars = Array.from(convertedText);
+    const len = Math.min(srcChars.length, dstChars.length);
+    let changed = Math.abs(srcChars.length - dstChars.length);
+    for (let i = 0; i < len; i++) {
+        if (srcChars[i] !== dstChars[i])
+            changed++;
+    }
+    return changed;
+}
 
 export const TextCorrectionManager = GObject.registerClass({
     GTypeName: 'LiswitchTextCorrectionManager',
 }, class TextCorrectionManager extends GObject.Object {
-    constructor(settings = null, inputSourceService = null) {
+    constructor(settings = null, inputSourceService = null, options = {}) {
         super();
 
         this._settings = settings;
         this._inputSourceService = inputSourceService;
-        this._translator = new TextTranslator();
+        this._translator = options.translator ?? new TextTranslator();
+        this._clipboardOverride = options.clipboard ?? null;
+        this._virtualDeviceOverride = options.virtualDevice ?? null;
+        this._displayOverride = options.display ?? null;
 
         // In-memory buffer strictly limited to 64 characters
         this._buffer = [];
-        this._virtualDevice = null;
+        this._virtualDevice = this._virtualDeviceOverride;
 
         // Shift double-click detection
         this._lastShiftPressTime = 0;
@@ -71,17 +123,22 @@ export const TextCorrectionManager = GObject.registerClass({
         this._stageSignalId = 0;
         this._focusSignalId = 0;
         this._inactivityTimerId = 0;
+        this._clipboardReadTimeoutId = 0;
         this._pasteTimeoutId = 0;
+        this._restoreClipboardTimeoutId = 0;
+        this._operationId = 0;
         this._hotkeySettingId = 0;
         this._enabledSettingId = 0;
         this._hotkeyRegistered = false;
         this._enabled = false;
+        this._destroyed = false;
     }
 
     enable() {
         if (this._enabled)
             return;
         this._enabled = true;
+        this._destroyed = false;
 
         if (this._settings) {
             this._enabledSettingId = this._settings.connect('changed::convert-text-enabled', () => {
@@ -114,13 +171,17 @@ export const TextCorrectionManager = GObject.registerClass({
             return;
 
         // Virtual keyboard device for Backspace and Ctrl+V injection
-        try {
-            this._virtualDevice = Compat.createVirtualKeyboardDevice({
-                clutterModule: Clutter,
-            });
-        } catch (e) {
-            Log.warn('TextCorrectionManager: failed to create virtual keyboard device:', e.message);
-            this._virtualDevice = null;
+        if (this._virtualDeviceOverride) {
+            this._virtualDevice = this._virtualDeviceOverride;
+        } else {
+            try {
+                this._virtualDevice = Compat.createVirtualKeyboardDevice({
+                    clutterModule: Clutter,
+                });
+            } catch (e) {
+                Log.warn('TextCorrectionManager: failed to create virtual keyboard device:', e.message);
+                this._virtualDevice = null;
+            }
         }
 
         // Global stage captured-event filter
@@ -140,6 +201,23 @@ export const TextCorrectionManager = GObject.registerClass({
         Log.debug('TextCorrectionManager: input tracking started');
     }
 
+    _clearPasteTimers() {
+        if (this._clipboardReadTimeoutId) {
+            GLib.Source.remove(this._clipboardReadTimeoutId);
+            this._clipboardReadTimeoutId = 0;
+        }
+
+        if (this._pasteTimeoutId) {
+            GLib.Source.remove(this._pasteTimeoutId);
+            this._pasteTimeoutId = 0;
+        }
+
+        if (this._restoreClipboardTimeoutId) {
+            GLib.Source.remove(this._restoreClipboardTimeoutId);
+            this._restoreClipboardTimeoutId = 0;
+        }
+    }
+
     _stopTracking() {
         if (this._stageSignalId && typeof global !== 'undefined' && global.stage?.disconnect) {
             global.stage.disconnect(this._stageSignalId);
@@ -156,10 +234,8 @@ export const TextCorrectionManager = GObject.registerClass({
             this._inactivityTimerId = 0;
         }
 
-        if (this._pasteTimeoutId) {
-            GLib.Source.remove(this._pasteTimeoutId);
-            this._pasteTimeoutId = 0;
-        }
+        this._operationId++;
+        this._clearPasteTimers();
 
         this._virtualDevice = null;
         Log.debug('TextCorrectionManager: input tracking stopped');
@@ -169,7 +245,7 @@ export const TextCorrectionManager = GObject.registerClass({
         this._unbindHotkey();
 
         const isEnabled = this._settings?.get_boolean('convert-text-enabled') ?? false;
-        if (!isEnabled || !Main.wm?.addKeybinding || !this._settings)
+        if (!isEnabled || !Main?.wm?.addKeybinding || !this._settings)
             return;
 
         try {
@@ -192,7 +268,7 @@ export const TextCorrectionManager = GObject.registerClass({
     }
 
     _unbindHotkey() {
-        if (this._hotkeyRegistered && Main.wm?.removeKeybinding) {
+        if (this._hotkeyRegistered && Main?.wm?.removeKeybinding) {
             try {
                 Main.wm.removeKeybinding('convert-hotkey');
             } catch {
@@ -203,6 +279,10 @@ export const TextCorrectionManager = GObject.registerClass({
     }
 
     _onCapturedEvent(event) {
+        // Clutter is only absent in standalone environments where no stage exists
+        if (!Clutter)
+            return false;
+
         const type = event.type();
 
         // Clear buffer on mouse clicks (cursor moved)
@@ -225,10 +305,26 @@ export const TextCorrectionManager = GObject.registerClass({
                 return Clutter.EVENT_PROPAGATE;
             }
 
-            // Command/Navigation keys clear the buffer
+            // Any key pressed while Ctrl/Alt/Super/Meta is held is a shortcut
+            // (Ctrl+A, Ctrl+Backspace, Alt+Left, ...), not text input: the
+            // editor state can no longer be mirrored, so drop the buffer.
+            const modifierMask = _getBufferResetModifierMask();
+            const state = typeof event.get_state === 'function' ? event.get_state() : 0;
+            if (modifierMask && (state & modifierMask) !== 0) {
+                this.clearBuffer();
+                return Clutter.EVENT_PROPAGATE;
+            }
+
+            // Command keys clear the buffer
             if (keysym === Clutter.KEY_Escape || keysym === Clutter.KEY_Return ||
                 keysym === Clutter.KEY_KP_Enter || keysym === Clutter.KEY_Tab ||
                 keysym === Clutter.KEY_ISO_Left_Tab) {
+                this.clearBuffer();
+                return Clutter.EVENT_PROPAGATE;
+            }
+
+            // Cursor navigation / Delete keys move the caret: clear the buffer
+            if (_getNavigationKeysyms().has(keysym)) {
                 this.clearBuffer();
                 return Clutter.EVENT_PROPAGATE;
             }
@@ -314,8 +410,14 @@ export const TextCorrectionManager = GObject.registerClass({
         });
     }
 
+    _getFocusWindow() {
+        const display = this._displayOverride ??
+            (typeof global !== 'undefined' ? global.display : null);
+        return display?.focus_window ?? null;
+    }
+
     _isPasswordOrSensitiveWindow() {
-        const window = typeof global !== 'undefined' ? global.display?.focus_window : null;
+        const window = this._getFocusWindow();
         if (!window)
             return false;
 
@@ -335,6 +437,197 @@ export const TextCorrectionManager = GObject.registerClass({
         this._buffer = [];
         this._shiftPressCount = 0;
         this._lastShiftPressTime = 0;
+    }
+
+    /**
+     * Resolve the best (fromLayout -> toLayout) conversion pair for `word`.
+     * When 3 or more layouts are configured, uses TextTranslator.guessSourceLayout()
+     * and chooses a target layout that produces a non-zero conversion (maximizing
+     * changed characters, breaking ties in circular order after fromPos).
+     *
+     * @private
+     * @param {string} word
+     * @param {Array<object>} sources
+     * @param {number} currentPos
+     * @param {object} activeSource
+     * @returns {{fromLayout: string, targetSource: object, converted: string}|null}
+     */
+    _resolveConversionPair(word, sources, currentPos, activeSource) {
+        let bestFromPos = currentPos >= 0 ? currentPos : 0;
+        let fromSource = activeSource ?? sources[bestFromPos];
+
+        if (sources.length >= 3) {
+            for (let offset = 1; offset < sources.length; offset++) {
+                const idx = (bestFromPos + offset) % sources.length;
+                const cand = sources[idx];
+                if (!cand?.id || cand.id === fromSource.id)
+                    continue;
+                if (this._translator.guessSourceLayout(word, fromSource.id, cand.id) === cand.id) {
+                    fromSource = cand;
+                    bestFromPos = idx;
+                }
+            }
+        }
+
+        const fromLayout = fromSource.id;
+        let targetSource = null;
+        let converted = null;
+        let bestChangedCount = 0;
+
+        for (let offset = 1; offset < sources.length; offset++) {
+            const cand = sources[(bestFromPos + offset) % sources.length];
+            if (!cand?.id || cand.id === fromLayout)
+                continue;
+
+            const candidateConverted = this._translator.convert(word, fromLayout, cand.id);
+            if (!candidateConverted || candidateConverted === word)
+                continue;
+
+            const changedCount = _countChangedChars(word, candidateConverted);
+            if (changedCount > bestChangedCount) {
+                bestChangedCount = changedCount;
+                targetSource = cand;
+                converted = candidateConverted;
+            }
+        }
+
+        if (!targetSource || !converted)
+            return null;
+
+        return {fromLayout, targetSource, converted};
+    }
+
+    /**
+     * Emit Ctrl+<key> or Ctrl+Shift+<key> through the virtual keyboard device.
+     *
+     * @private
+     */
+    _emitShortcut(virtualDevice, keycode) {
+        if (this._destroyed || !virtualDevice?.notify_key)
+            return;
+
+        const pressedState = Clutter?.KeyState?.PRESSED ?? 1;
+        const releasedState = Clutter?.KeyState?.RELEASED ?? 0;
+        let t = GLib.get_monotonic_time();
+        const step = 1000;
+
+        virtualDevice.notify_key(t, EVDEV_LEFTCTRL, pressedState);
+        t += step;
+        virtualDevice.notify_key(t, keycode, pressedState);
+        t += step;
+        virtualDevice.notify_key(t, keycode, releasedState);
+        t += step;
+        virtualDevice.notify_key(t, EVDEV_LEFTCTRL, releasedState);
+    }
+
+    /**
+     * Read clipboard text asynchronously with a timeout guard and operation ID check.
+     *
+     * @private
+     */
+    _readClipboardText(clipboard, opId, callback) {
+        const clipboardType = St?.ClipboardType?.CLIPBOARD ?? 1;
+        if (typeof clipboard.get_text !== 'function') {
+            callback(null);
+            return;
+        }
+
+        let handled = false;
+        const finish = text => {
+            if (handled || this._destroyed || opId !== this._operationId)
+                return;
+            handled = true;
+            if (this._clipboardReadTimeoutId) {
+                GLib.Source.remove(this._clipboardReadTimeoutId);
+                this._clipboardReadTimeoutId = 0;
+            }
+            callback(text);
+        };
+
+        try {
+            clipboard.get_text(clipboardType, (_cb, text) => {
+                finish(text);
+            });
+        } catch (e) {
+            Log.warn('TextCorrectionManager: clipboard read error:', e.message);
+            finish(null);
+        }
+
+        if (!handled && !this._destroyed && opId === this._operationId) {
+            this._clipboardReadTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+                this._clipboardReadTimeoutId = 0;
+                finish(null);
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+    }
+
+    /**
+     * Schedule restoration of previous non-empty clipboard contents.
+     *
+     * @private
+     */
+    _scheduleClipboardRestore(clipboard, previousText, opId) {
+        if (typeof previousText !== 'string' || previousText.length === 0)
+            return;
+
+        const clipboardType = St?.ClipboardType?.CLIPBOARD ?? 1;
+        this._restoreClipboardTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+            this._restoreClipboardTimeoutId = 0;
+            if (!this._destroyed && opId === this._operationId) {
+                try {
+                    clipboard.set_text(clipboardType, previousText);
+                } catch (e) {
+                    Log.warn('TextCorrectionManager: clipboard restore error:', e.message);
+                }
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    /**
+     * Emit Backspaces (if charCount > 0), paste converted text via Clipboard + Ctrl+V
+     * (or Ctrl+Shift+V in terminal windows), and restore previous clipboard text if any.
+     *
+     * @private
+     */
+    _injectReplacement(clipboard, virtualDevice, charCount, converted, previousText, opId = this._operationId) {
+        if (this._destroyed || opId !== this._operationId || !virtualDevice?.notify_key)
+            return;
+
+        const pressedState = Clutter?.KeyState?.PRESSED ?? 1;
+        const releasedState = Clutter?.KeyState?.RELEASED ?? 0;
+        const clipboardType = St?.ClipboardType?.CLIPBOARD ?? 1;
+
+        try {
+            if (charCount > 0) {
+                const timeUs = GLib.get_monotonic_time();
+                for (let i = 0; i < charCount; i++) {
+                    const t = timeUs + (i * 2000);
+                    virtualDevice.notify_key(t, EVDEV_BACKSPACE, pressedState);
+                    virtualDevice.notify_key(t + 1000, EVDEV_BACKSPACE, releasedState);
+                }
+            }
+
+            clipboard.set_text(clipboardType, converted);
+
+            // Small delay to ensure clipboard sync before Ctrl+V
+            this._clearPasteTimers();
+            this._pasteTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 20, () => {
+                this._pasteTimeoutId = 0;
+                if (this._destroyed || opId !== this._operationId)
+                    return GLib.SOURCE_REMOVE;
+
+                const dev = this._virtualDevice ?? virtualDevice;
+                if (dev?.notify_key)
+                    this._emitShortcut(dev, EVDEV_V);
+
+                this._scheduleClipboardRestore(clipboard, previousText, opId);
+                return GLib.SOURCE_REMOVE;
+            });
+        } catch (e) {
+            Log.warn('TextCorrectionManager: clipboard injection error:', e.message);
+        }
     }
 
     /**
@@ -372,59 +665,38 @@ export const TextCorrectionManager = GObject.registerClass({
         }
 
         const currentIndex = this._inputSourceService.getCurrentIndex();
-        const currentSource = this._inputSourceService.getCurrentSource();
-        const fromLayout = currentSource?.id || sources[0].id;
 
-        // Target layout: switch to the alternate layout
-        let targetIndex = (currentIndex + 1) % sources.length;
-        const targetSource = sources[targetIndex];
-        const toLayout = targetSource?.id || sources[1].id;
+        // source.index is not guaranteed to match the array position
+        // (e.g. indices [0, 2]), so resolve the position explicitly.
+        const currentPos = sources.findIndex(s => s.index === currentIndex);
+        const fromPos = currentPos >= 0 ? currentPos : 0;
+        const currentSource = this._inputSourceService.getCurrentSource() ?? sources[fromPos];
 
-        const converted = this._translator.convert(word, fromLayout, toLayout);
-        if (!converted || converted === word) {
+        const pair = this._resolveConversionPair(word, sources, fromPos, currentSource);
+        if (!pair) {
             Log.debug('convertLastWord: converted word identical to source');
             return false;
         }
 
+        const {fromLayout, targetSource, converted} = pair;
+        const toLayout = targetSource.id;
+
         Log.debug(`convertLastWord: converting word length ${word.length} from ${fromLayout} to ${toLayout}`);
 
-        // 1. Erase word with Backspace events via VirtualInputDevice
-        if (this._virtualDevice?.notify_key) {
-            const timeUs = GLib.get_monotonic_time();
-            for (let i = 0; i < word.length; i++) {
-                const t = timeUs + (i * 2000);
-                this._virtualDevice.notify_key(t, EVDEV_BACKSPACE, Clutter.KeyState.PRESSED);
-                this._virtualDevice.notify_key(t + 1000, EVDEV_BACKSPACE, Clutter.KeyState.RELEASED);
-            }
+        // 1 & 2. Erase word and insert converted text via Clipboard + Ctrl+V, preserving prior clipboard text
+        const virtualDevice = this._virtualDevice ?? this._virtualDeviceOverride;
+        const clipboard = this._clipboardOverride ?? St?.Clipboard?.get_default?.() ?? null;
 
-            // 2. Insert converted text via Clipboard and Ctrl+V
-            try {
-                const clipboard = St.Clipboard.get_default();
-                clipboard.set_text(St.ClipboardType.CLIPBOARD, converted);
-
-                // Small delay to ensure clipboard sync before Ctrl+V
-                if (this._pasteTimeoutId) {
-                    GLib.Source.remove(this._pasteTimeoutId);
-                    this._pasteTimeoutId = 0;
-                }
-                this._pasteTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 20, () => {
-                    this._pasteTimeoutId = 0;
-                    if (this._virtualDevice?.notify_key) {
-                        const pasteTime = GLib.get_monotonic_time();
-                        this._virtualDevice.notify_key(pasteTime, EVDEV_LEFTCTRL, Clutter.KeyState.PRESSED);
-                        this._virtualDevice.notify_key(pasteTime + 1000, EVDEV_V, Clutter.KeyState.PRESSED);
-                        this._virtualDevice.notify_key(pasteTime + 2000, EVDEV_V, Clutter.KeyState.RELEASED);
-                        this._virtualDevice.notify_key(pasteTime + 3000, EVDEV_LEFTCTRL, Clutter.KeyState.RELEASED);
-                    }
-                    return GLib.SOURCE_REMOVE;
-                });
-            } catch (e) {
-                Log.warn('convertLastWord: clipboard injection error:', e.message);
-            }
+        if (virtualDevice?.notify_key && clipboard) {
+            this._clearPasteTimers();
+            const opId = ++this._operationId;
+            this._readClipboardText(clipboard, opId, previousText => {
+                this._injectReplacement(clipboard, virtualDevice, word.length, converted, previousText, opId);
+            });
         }
 
         // 3. Switch active input source to the target layout
-        this._inputSourceService.activate(targetIndex, true);
+        this._inputSourceService.activate(targetSource.index, true);
 
         // 4. Clear buffer
         this.clearBuffer();
@@ -432,6 +704,10 @@ export const TextCorrectionManager = GObject.registerClass({
     }
 
     destroy() {
+        this._destroyed = true;
+        this._operationId++;
+        this._clearPasteTimers();
+
         if (!this._enabled)
             return;
         this._enabled = false;
@@ -457,6 +733,9 @@ export const TextCorrectionManager = GObject.registerClass({
             this._translator = null;
         }
 
+        this._clipboardOverride = null;
+        this._virtualDeviceOverride = null;
+        this._displayOverride = null;
         this._settings = null;
         this._inputSourceService = null;
     }

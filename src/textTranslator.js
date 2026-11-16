@@ -44,6 +44,24 @@ const FALLBACK_RU = {
     SPCE: [' ', ' '],
 };
 
+const FALLBACK_KZ = {
+    ...FALLBACK_RU,
+    TLDE: ['(', ')', 'ё', 'Ё'],
+    AE01: ['"', '!'],
+    AE02: ['ә', 'Ә'],
+    AE03: ['і', 'І'],
+    AE04: ['ң', 'Ң'],
+    AE05: ['ғ', 'Ғ'],
+    AE06: [',', ';'],
+    AE07: ['.', ':'],
+    AE08: ['ү', 'Ү'],
+    AE09: ['ұ', 'Ұ'],
+    AE10: ['қ', 'Қ'],
+    AE11: ['ө', 'Ө'],
+    AE12: ['һ', 'Һ'],
+    AB10: ['№', '?'],
+};
+
 /**
  * TextTranslator
  *
@@ -52,7 +70,14 @@ const FALLBACK_RU = {
  * Pure ESM module with zero GNOME Shell compositor dependencies.
  */
 export class TextTranslator {
-    constructor() {
+    /**
+     * @param {object} [options] - Optional overrides for testing
+     * @param {object|null} [options.clutter] - Clutter GI module override (e.g. null to test fallback)
+     * @param {string} [options.xkbDir] - Custom XKB symbols directory path
+     */
+    constructor(options = {}) {
+        this._clutter = 'clutter' in options ? options.clutter : Clutter;
+        this._xkbDir = options.xkbDir ?? '/usr/share/X11/xkb/symbols';
         this._fileCache = new Map();
         this._layoutCache = new Map();
         this._reverseCache = new Map();
@@ -69,7 +94,7 @@ export class TextTranslator {
         if (this._fileCache.has(layoutName))
             return this._fileCache.get(layoutName);
 
-        const path = `/usr/share/X11/xkb/symbols/${layoutName}`;
+        const path = `${this._xkbDir}/${layoutName}`;
         let content = '';
 
         try {
@@ -86,6 +111,7 @@ export class TextTranslator {
             let currentSection = null;
             let sectionLines = [];
             let braceDepth = 0;
+            let seenOpenBrace = false;
 
             for (const rawLine of lines) {
                 const commentIdx = rawLine.indexOf('//');
@@ -97,21 +123,25 @@ export class TextTranslator {
                         currentSection = match[1];
                         sectionLines = [];
                         braceDepth = 0;
+                        seenOpenBrace = false;
                     }
                 }
 
                 if (currentSection) {
                     for (let i = 0; i < line.length; i++) {
-                        if (line[i] === '{')
+                        if (line[i] === '{') {
                             braceDepth++;
-                        else if (line[i] === '}')
+                            seenOpenBrace = true;
+                        } else if (line[i] === '}') {
                             braceDepth--;
+                        }
                     }
                     sectionLines.push(line);
-                    if (braceDepth === 0 && sectionLines.length > 1) {
+                    if (seenOpenBrace && braceDepth === 0) {
                         sections[currentSection] = sectionLines.join('\n');
                         currentSection = null;
                         sectionLines = [];
+                        seenOpenBrace = false;
                     }
                 }
             }
@@ -119,6 +149,43 @@ export class TextTranslator {
 
         this._fileCache.set(layoutName, sections);
         return sections;
+    }
+
+    /**
+     * Verify that a resolved XKB keyMap contains real (non-null) symbols.
+     * Guards against Clutter === null or empty symbol tables where keys exist
+     * only as [null, null] (or with only rare level-3/4 Uxxxx symbols).
+     *
+     * @private
+     * @param {Object<string, Array<string|null>>} keyMap
+     * @returns {boolean}
+     */
+    _hasUsableSymbols(keyMap) {
+        const entries = Object.values(keyMap);
+        if (entries.length === 0)
+            return false;
+
+        let primaryResolvedCount = 0;
+        let anyResolved = false;
+
+        for (const chars of entries) {
+            if (!Array.isArray(chars))
+                continue;
+            if (chars.some(ch => ch !== null && ch !== undefined))
+                anyResolved = true;
+            if (chars[0] != null || chars[1] != null)
+                primaryResolvedCount++;
+        }
+
+        if (!anyResolved || primaryResolvedCount === 0)
+            return false;
+
+        // Full layouts define dozens of keys; if Clutter is unavailable and only
+        // 1-2 Uxxxx keys resolved at level 0/1 out of many, fall back cleanly.
+        if (entries.length > 5 && primaryResolvedCount < Math.min(5, entries.length))
+            return false;
+
+        return true;
     }
 
     /**
@@ -146,18 +213,148 @@ export class TextTranslator {
             return this._layoutCache.get(cacheKey);
 
         const visited = new Set();
-        const keyMap = this._resolveSectionRecursive(layoutName, variantName, visited);
+        let keyMap = this._resolveSectionRecursive(layoutName, variantName, visited);
 
-        // Fallback for missing keys or empty results
-        if (Object.keys(keyMap).length === 0) {
+        // Fallback when XKB parsing produced no usable symbols (e.g. Clutter === null)
+        if (!this._hasUsableSymbols(keyMap)) {
             if (layoutName === 'ru')
-                Object.assign(keyMap, FALLBACK_RU);
+                keyMap = {...FALLBACK_RU};
+            else if (layoutName === 'kz')
+                keyMap = {...FALLBACK_KZ};
             else
-                Object.assign(keyMap, FALLBACK_US);
+                keyMap = {...FALLBACK_US};
         }
 
         this._layoutCache.set(cacheKey, keyMap);
         return keyMap;
+    }
+
+    /**
+     * Extract the Group1 symbol list string from inside a `key <CODE> { ... };` block.
+     *
+     * @private
+     * @param {string} blockBody
+     * @returns {string|null}
+     */
+    _extractGroup1RawSymbols(blockBody) {
+        const group1Match = blockBody.match(/\bsymbols\s*(?:\[\s*Group1\s*\])?\s*=\s*\[([^\]]*)\]/i);
+        if (group1Match)
+            return group1Match[1];
+
+        // Strip key=value properties (type[Group1]="...", actions[Group1]=[...], symbols[Group2]=[...], etc.)
+        const stripped = blockBody.replace(
+            /\b[a-zA-Z_][a-zA-Z0-9_]*\s*(?:\[[^\]]*\])?\s*=\s*(?:"[^"]*"|\[[^\]]*\]|[^,;\n}]+)/g,
+            ''
+        );
+        const bareMatch = stripped.match(/\[([^\]]*)\]/);
+        return bareMatch ? bareMatch[1] : null;
+    }
+
+    /**
+     * Resolve a comma-separated XKB keysym list into parsed level descriptors.
+     *
+     * @private
+     * @param {string} rawList
+     * @returns {Array<{char: string|null, isNoSymbol: boolean, isVoid: boolean}>}
+     */
+    _resolveKeyTokens(rawList) {
+        const rawSyms = rawList.split(',').map(s => s.trim().replace(/^\[|\]$/g, ''));
+        return rawSyms.map(name => {
+            if (!name || name === 'NoSymbol')
+                return {char: null, isNoSymbol: true, isVoid: false};
+            if (name === 'VoidSymbol')
+                return {char: null, isNoSymbol: false, isVoid: true};
+
+            if (name.startsWith('U') && /^[0-9A-Fa-f]{4,6}$/.test(name.slice(1))) {
+                try {
+                    return {
+                        char: String.fromCodePoint(parseInt(name.slice(1), 16)),
+                        isNoSymbol: false,
+                        isVoid: false,
+                    };
+                } catch {
+                    return {char: null, isNoSymbol: false, isVoid: false};
+                }
+            }
+
+            try {
+                if (this._clutter) {
+                    const sym = this._clutter[`KEY_${name}`];
+                    if (sym !== undefined && typeof this._clutter.keysym_to_unicode === 'function') {
+                        const u = this._clutter.keysym_to_unicode(sym);
+                        if (u > 0) {
+                            return {
+                                char: String.fromCodePoint(u),
+                                isNoSymbol: false,
+                                isVoid: false,
+                            };
+                        }
+                    }
+                }
+            } catch {
+                // Ignore unknown keysym lookup errors
+            }
+            return {char: null, isNoSymbol: false, isVoid: false};
+        });
+    }
+
+    /**
+     * Merge parsed key levels into an existing level array respecting XKB merge mode.
+     *
+     * @private
+     * @param {Array<string|null>|undefined} existing
+     * @param {Array<{char: string|null, isNoSymbol: boolean, isVoid: boolean}>} parsed
+     * @param {string} mode - 'override' | 'replace' | 'augment'
+     * @returns {Array<string|null>}
+     */
+    _mergeKeyLevels(existing, parsed, mode) {
+        if (mode === 'replace' || !existing)
+            return parsed.map(item => item.char);
+
+        if (parsed.length === 0)
+            return existing.slice();
+
+        const len = Math.max(existing.length, parsed.length);
+        const merged = [];
+
+        for (let i = 0; i < len; i++) {
+            const prev = i < existing.length ? existing[i] : null;
+            const next = i < parsed.length ? parsed[i] : null;
+
+            if (!next) {
+                merged.push(prev);
+            } else if (mode === 'augment') {
+                merged.push(prev !== null ? prev : next.char);
+            } else if (next.isVoid) {
+                merged.push(null);
+            } else if (next.isNoSymbol) {
+                merged.push(prev);
+            } else {
+                merged.push(next.char);
+            }
+        }
+
+        return merged;
+    }
+
+    /**
+     * Merge an included keyMap into target keyMap respecting the include directive.
+     *
+     * @private
+     * @param {Object<string, Array<string|null>>} keyMap
+     * @param {Object<string, Array<string|null>>} incMap
+     * @param {string} directive - 'include' | 'override' | 'augment' | 'replace'
+     */
+    _mergeIncludedKeyMap(keyMap, incMap, directive) {
+        const mode = directive === 'include' ? 'override' : directive;
+        for (const [code, incChars] of Object.entries(incMap)) {
+            const parsed = incChars.map(ch => ({
+                char: ch,
+                isNoSymbol: ch === null,
+                isVoid: false,
+            }));
+            keyMap[code] = this._mergeKeyLevels(keyMap[code], parsed, mode);
+        }
     }
 
     /**
@@ -171,63 +368,49 @@ export class TextTranslator {
             return {};
         visited.add(visitKey);
 
-        const sections = this._parseXkbFile(layoutName);
-        let body = sections[variantName];
-        if (!body) {
-            // Fallback to first available section or default
-            const firstKey = Object.keys(sections)[0];
-            body = sections[firstKey] || '';
-        }
-
         const keyMap = {};
-
-        // 1. Process includes
-        const incRegex = /include\s+"([^"]+)"/g;
-        let im;
-        while ((im = incRegex.exec(body)) !== null) {
-            const target = im[1];
-            let incFile = target;
-            let incSec = '';
-            if (target.includes('(')) {
-                const p = target.split('(');
-                incFile = p[0];
-                incSec = p[1].replace(')', '');
+        try {
+            const sections = this._parseXkbFile(layoutName);
+            let body = sections[variantName];
+            if (!body) {
+                // Fallback to first available section or default
+                const firstKey = Object.keys(sections)[0];
+                body = sections[firstKey] || '';
             }
-            const incMap = this._resolveSectionRecursive(incFile, incSec, visited);
-            Object.assign(keyMap, incMap);
-        }
 
-        // 2. Process key definitions: key <XXXX> {[ sym1, sym2 ... ]};
-        const keyRegex = /key\s+<([A-Z0-9]+)>\s*\{\s*(?:\[|type[^=]*=\s*[^,]+,\s*symbols[^=]*=\s*\[)\s*([^\]]+)\]/g;
-        let km;
-        while ((km = keyRegex.exec(body)) !== null) {
-            const code = km[1];
-            const rawSyms = km[2].split(',').map(s => s.trim().replace(/^\[|\]$/g, ''));
-            const chars = rawSyms.map(name => {
-                if (!name || name === 'NoSymbol')
-                    return null;
-                if (name.startsWith('U') && /^[0-9A-Fa-f]{4,6}$/.test(name.slice(1))) {
-                    try {
-                        return String.fromCodePoint(parseInt(name.slice(1), 16));
-                    } catch {
-                        return null;
+            // Strip C-style block comments if present
+            const cleanBody = body.replace(/\/\*[\s\S]*?\*\//g, '');
+
+            // Process includes and single/multiline key definitions in XKB order
+            const stmtRegex = /\b(?:(include|override|augment|replace)\s+"([^"]+)"|(?:(override|replace|augment)\s+)?key\s+<([A-Za-z0-9_]+)>\s*\{([^}]*)\}\s*;?)/g;
+            let m;
+            while ((m = stmtRegex.exec(cleanBody)) !== null) {
+                if (m[1]) {
+                    const directive = m[1];
+                    const target = m[2];
+                    let incFile = target;
+                    let incSec = '';
+                    if (target.includes('(')) {
+                        const p = target.split('(');
+                        incFile = p[0];
+                        incSec = p[1].replace(')', '');
                     }
+                    const incMap = this._resolveSectionRecursive(incFile, incSec, visited);
+                    this._mergeIncludedKeyMap(keyMap, incMap, directive);
+                } else {
+                    const mode = m[3] || 'override';
+                    const code = m[4];
+                    const blockBody = m[5];
+                    const rawList = this._extractGroup1RawSymbols(blockBody);
+                    if (rawList === null)
+                        continue;
+
+                    const parsed = this._resolveKeyTokens(rawList);
+                    keyMap[code] = this._mergeKeyLevels(keyMap[code], parsed, mode);
                 }
-                try {
-                    if (Clutter) {
-                        const sym = Clutter[`KEY_${name}`];
-                        if (sym !== undefined && typeof Clutter.keysym_to_unicode === 'function') {
-                            const u = Clutter.keysym_to_unicode(sym);
-                            if (u > 0)
-                                return String.fromCodePoint(u);
-                        }
-                    }
-                    return null;
-                } catch {
-                    return null;
-                }
-            });
-            keyMap[code] = chars;
+            }
+        } finally {
+            visited.delete(visitKey);
         }
 
         return keyMap;
