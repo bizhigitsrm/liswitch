@@ -39,7 +39,7 @@ if command -v eslint >/dev/null 2>&1; then
     eslint .
 else
     echo "    (eslint not in PATH; validating all files via node --check)"
-    for f in extension.js prefs.js indicator.js hotkeys.js windowMemory.js osd.js textCorrection.js src/*.js tests/*.js; do
+    for f in extension.js prefs.js src/*.js tests/*.js; do
         node --check "${f}"
     done
 fi
@@ -56,22 +56,9 @@ make translations
 echo "    Translations compiled successfully."
 
 # Step 6: Package the extension bundle
-echo "==> [6/7] Packaging extension bundle via gnome-extensions pack..."
+echo "==> [6/7] Packaging extension bundle via make pack..."
 rm -f "${PACK_FILE}" "${PACK_COMPAT_FILE}"
-
-gnome-extensions pack --force \
-    --podir=po \
-    --gettext-domain=liswitch \
-    --extra-source=stylesheet.css \
-    --extra-source=LICENSE \
-    --extra-source=indicator.js \
-    --extra-source=hotkeys.js \
-    --extra-source=windowMemory.js \
-    --extra-source=osd.js \
-    --extra-source=textCorrection.js \
-    --extra-source=src \
-    --out-dir="${ROOT_DIR}" \
-    "${ROOT_DIR}"
+make pack
 
 if [ ! -f "${PACK_FILE}" ]; then
     if [ -f "${PACK_COMPAT_FILE}" ]; then
@@ -101,11 +88,8 @@ REQUIRED_ENTRIES=(
     "src/inputSourceService.js"
     "src/indicator.js"
     "src/hotkeys.js"
-    "src/hotkeyManager.js"
     "src/windowMemory.js"
-    "src/windowMemoryService.js"
     "src/osd.js"
-    "src/osdService.js"
     "src/textTranslator.js"
     "src/textCorrection.js"
 )

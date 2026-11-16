@@ -12,11 +12,10 @@ schemas: $(SCHEMA_FILE)
 
 pot:
 	xgettext --from-code=UTF-8 --output=po/liswitch.pot \
-		--package-name=liswitch --package-version=51.0 \
+		--package-name=liswitch --package-version=1.0.0 \
 		--msgid-bugs-address=https://github.com/liswitch/liswitch/issues \
 		--keyword=_ --keyword=C_:1c,2 --keyword=N_ \
-		extension.js prefs.js indicator.js hotkeys.js windowMemory.js osd.js textCorrection.js \
-		src/*.js
+		extension.js prefs.js src/*.js
 
 translations:
 	@mkdir -p locale/ru/LC_MESSAGES locale/kk/LC_MESSAGES
@@ -29,11 +28,6 @@ pack: schemas translations
 		--gettext-domain=liswitch \
 		--extra-source=stylesheet.css \
 		--extra-source=LICENSE \
-		--extra-source=indicator.js \
-		--extra-source=hotkeys.js \
-		--extra-source=windowMemory.js \
-		--extra-source=osd.js \
-		--extra-source=textCorrection.js \
 		--extra-source=src \
 		--out-dir=. \
 		.
@@ -91,35 +85,9 @@ lint: schemas
 		eslint . ; \
 	else \
 		echo "eslint not found in PATH; running syntax validation via node --check..."; \
-		node --check extension.js ; \
-		node --check prefs.js ; \
-		node --check indicator.js ; \
-		node --check hotkeys.js ; \
-		node --check windowMemory.js ; \
-		node --check osd.js ; \
-		node --check textCorrection.js ; \
-		node --check src/log.js ; \
-		node --check src/inputSourceService.js ; \
-		node --check src/indicator.js ; \
-		node --check src/hotkeys.js ; \
-		node --check src/hotkeyManager.js ; \
-		node --check src/windowMemory.js ; \
-		node --check src/windowMemoryService.js ; \
-		node --check src/osd.js ; \
-		node --check src/osdService.js ; \
-		node --check src/textTranslator.js ; \
-		node --check src/textCorrection.js ; \
-		node --check tests/smoke-test.js ; \
-		node --check tests/test-input-source-service.js ; \
-		node --check tests/test-indicator.js ; \
-		node --check tests/test-hotkeys.js ; \
-		node --check tests/test-window-memory.js ; \
-		node --check tests/test-osd.js ; \
-		node --check tests/test-prefs.js ; \
-		node --check tests/test-text-correction.js ; \
-		node --check tests/test-performance.js ; \
-		node --check tests/test-stress-100-cycles.js ; \
-		node --check tests/test-resilience.js ; \
+		for f in extension.js prefs.js src/*.js tests/*.js; do \
+			node --check "$$f" || exit 1; \
+		done ; \
 		echo "Syntax check OK"; \
 	fi
 

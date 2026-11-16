@@ -27,19 +27,7 @@ echo "==> 2.2 Compiling translations..."
 make translations
 
 echo "==> 3. Packaging extension..."
-gnome-extensions pack --force \
-    --podir=po \
-    --gettext-domain=liswitch \
-    --extra-source=stylesheet.css \
-    --extra-source=LICENSE \
-    --extra-source=indicator.js \
-    --extra-source=hotkeys.js \
-    --extra-source=windowMemory.js \
-    --extra-source=osd.js \
-    --extra-source=textCorrection.js \
-    --extra-source=src \
-    --out-dir="${ROOT_DIR}" \
-    "${ROOT_DIR}"
+make pack
 
 PACK_FILE="${ROOT_DIR}/${UUID}.shell-extension.zip"
 if [ ! -f "${PACK_FILE}" ]; then
