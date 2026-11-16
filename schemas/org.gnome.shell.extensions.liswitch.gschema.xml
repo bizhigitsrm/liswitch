@@ -137,6 +137,12 @@
       <description>Saved original values of switch-input-source-backward for rollback upon extension disable.</description>
     </key>
 
+    <key name="freed-system-shortcuts" type="s">
+      <default>"{}"</default>
+      <summary>User-approved system shortcut overrides</summary>
+      <description>JSON-encoded dictionary of system shortcuts explicitly freed by user action, preserved across temporary disables such as screen lock.</description>
+    </key>
+
     <!-- === Исправление текста (F6) === -->
     <key name="convert-text-enabled" type="b">
       <default>false</default>

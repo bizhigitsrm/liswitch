@@ -56,6 +56,7 @@ export const HOTKEY_KEYS = [
     'hotkey-switch-2',
     'hotkey-switch-3',
     'hotkey-switch-4',
+    'convert-hotkey',
 ];
 
 const MODIFIER_KEY_NAMES = new Set([
@@ -239,8 +240,94 @@ export function checkConflicts(settings, {schemaSource = null, getSettings = nul
 }
 
 /**
+ * Find another Liswitch hotkey key that already uses the given accelerator shortcut.
+ *
+ * @param {Gio.Settings|object} settings - Liswitch GSettings instance
+ * @param {string} currentKeyName - Key being assigned (excluded from comparison)
+ * @param {string} newShortcut - Accelerator string to test
+ * @returns {string|null} Conflicting GSettings key name, or null
+ */
+export function findDuplicateHotkeyKey(settings, currentKeyName, newShortcut) {
+    if (!settings || !newShortcut || typeof newShortcut !== 'string' || !newShortcut.trim())
+        return null;
+
+    const targetNorm = normalizeShortcut(newShortcut);
+    if (!targetNorm)
+        return null;
+
+    for (const otherKey of HOTKEY_KEYS) {
+        if (otherKey === currentKeyName)
+            continue;
+
+        try {
+            const otherArr = settings.get_strv(otherKey);
+            for (const item of otherArr) {
+                if (normalizeShortcut(item) === targetNorm)
+                    return otherKey;
+            }
+        } catch {
+            // Ignore schema reading errors
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Safely check whether a GSettings key exists on the settings instance
+ * (handles both real Gio.Settings and test mocks).
+ *
+ * @param {Gio.Settings|object} settings
+ * @param {string} key
+ * @returns {boolean}
+ */
+function _hasSettingsKey(settings, key) {
+    if (!settings)
+        return false;
+    if (settings.settings_schema && typeof settings.settings_schema.has_key === 'function')
+        return settings.settings_schema.has_key(key);
+    return true;
+}
+
+/**
+ * Safely read and parse a JSON dictionary from a GSettings string key.
+ *
+ * @param {Gio.Settings|object} settings
+ * @param {string} key
+ * @returns {object}
+ */
+function _readJsonMap(settings, key) {
+    if (!_hasSettingsKey(settings, key) || typeof settings.get_string !== 'function')
+        return {};
+    try {
+        const raw = settings.get_string(key);
+        if (raw && raw.trim()) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+                return parsed;
+        }
+    } catch {
+        // Ignore malformed JSON
+    }
+    return {};
+}
+
+/**
+ * Safely serialize and store a JSON dictionary in a GSettings string key.
+ *
+ * @param {Gio.Settings|object} settings
+ * @param {string} key
+ * @param {object} map
+ */
+function _writeJsonMap(settings, key, map) {
+    if (!_hasSettingsKey(settings, key) || typeof settings.set_string !== 'function')
+        return;
+    settings.set_string(key, JSON.stringify(map));
+}
+
+/**
  * Free a conflicting shortcut in the system GSettings schema after backing up
- * the original value into Liswitch's GSettings schema.
+ * the original value into Liswitch's GSettings schema and recording user override intent.
  *
  * @param {object} conflict - Conflict descriptor from checkConflicts()
  * @param {Gio.Settings} settings - Liswitch GSettings instance
@@ -265,34 +352,46 @@ export function freeSystemShortcut(conflict, settings, {getSettings = null} = {}
         else
             originalValue = sysSettings.get_string(schemaKey);
 
-        // 2. Save into Liswitch backup JSON map
-        let backupMap = {};
-        try {
-            const backupJson = settings.get_string('backup-system-shortcuts');
-            if (backupJson && backupJson.trim())
-                backupMap = JSON.parse(backupJson);
-        } catch {
-            backupMap = {};
+        // 2. Save into Liswitch backup JSON map (preserve earliest original value if already backed up)
+        const backupMap = _readJsonMap(settings, 'backup-system-shortcuts');
+        const backupKey = `${schemaId}:${schemaKey}`;
+
+        if (!backupMap[backupKey]) {
+            backupMap[backupKey] = {
+                schemaId,
+                schemaKey,
+                schemaType,
+                value: originalValue,
+            };
+            _writeJsonMap(settings, 'backup-system-shortcuts', backupMap);
+
+            // Also update dedicated backup keys for switch-input-source if applicable
+            if (schemaId === 'org.gnome.desktop.wm.keybindings') {
+                if (schemaKey === 'switch-input-source' && Array.isArray(originalValue))
+                    settings.set_strv('backup-system-switch-keys', originalValue);
+                else if (schemaKey === 'switch-input-source-backward' && Array.isArray(originalValue))
+                    settings.set_strv('backup-system-switch-backward-keys', originalValue);
+            }
         }
 
-        const backupKey = `${schemaId}:${schemaKey}`;
-        backupMap[backupKey] = {
+        // 3. Persist user's explicit override intent so lock/unlock cycles re-apply it
+        const freedMap = _readJsonMap(settings, 'freed-system-shortcuts');
+        const existingIntent = freedMap[backupKey];
+        const intentShortcuts = Array.isArray(existingIntent?.shortcuts)
+            ? [...existingIntent.shortcuts]
+            : [];
+        if (normalized && !intentShortcuts.includes(normalized))
+            intentShortcuts.push(normalized);
+
+        freedMap[backupKey] = {
             schemaId,
             schemaKey,
             schemaType,
-            value: originalValue,
+            shortcuts: intentShortcuts,
         };
-        settings.set_string('backup-system-shortcuts', JSON.stringify(backupMap));
+        _writeJsonMap(settings, 'freed-system-shortcuts', freedMap);
 
-        // Also update dedicated backup keys for switch-input-source if applicable
-        if (schemaId === 'org.gnome.desktop.wm.keybindings') {
-            if (schemaKey === 'switch-input-source' && Array.isArray(originalValue))
-                settings.set_strv('backup-system-switch-keys', originalValue);
-            else if (schemaKey === 'switch-input-source-backward' && Array.isArray(originalValue))
-                settings.set_strv('backup-system-switch-backward-keys', originalValue);
-        }
-
-        // 3. Modify system settings to release the shortcut
+        // 4. Modify system settings to release the shortcut
         if (schemaType === 'as') {
             const filtered = (originalValue || []).filter(item => normalizeShortcut(item) !== normalized);
             sysSettings.set_strv(schemaKey, filtered);
@@ -309,7 +408,8 @@ export function freeSystemShortcut(conflict, settings, {getSettings = null} = {}
 }
 
 /**
- * Restore a previously freed system shortcut from Liswitch's backup into the system schema.
+ * Restore a previously freed system shortcut from Liswitch's backup into the system schema,
+ * and clear the user's explicit override intent for that system key.
  *
  * @param {string} schemaId - System schema ID
  * @param {string} schemaKey - System key name
@@ -326,15 +426,14 @@ export function restoreSystemShortcut(schemaId, schemaKey, settings, {getSetting
     const createSettings = getSettings || (id => new Gio.Settings({schema_id: id}));
 
     try {
-        let backupMap = {};
-        try {
-            const backupJson = settings.get_string('backup-system-shortcuts');
-            if (backupJson && backupJson.trim())
-                backupMap = JSON.parse(backupJson);
-        } catch {
-            backupMap = {};
+        // Always remove explicit user intent on manual restore
+        const freedMap = _readJsonMap(settings, 'freed-system-shortcuts');
+        if (Object.prototype.hasOwnProperty.call(freedMap, backupKey)) {
+            delete freedMap[backupKey];
+            _writeJsonMap(settings, 'freed-system-shortcuts', freedMap);
         }
 
+        const backupMap = _readJsonMap(settings, 'backup-system-shortcuts');
         const entry = backupMap[backupKey];
         if (!entry) {
             Log.debug(`restoreSystemShortcut: no backup entry found for ${backupKey}`);
@@ -348,7 +447,7 @@ export function restoreSystemShortcut(schemaId, schemaKey, settings, {getSetting
             sysSettings.set_string(schemaKey, entry.value || '');
 
         delete backupMap[backupKey];
-        settings.set_string('backup-system-shortcuts', JSON.stringify(backupMap));
+        _writeJsonMap(settings, 'backup-system-shortcuts', backupMap);
 
         // Clear dedicated backup keys if applicable
         if (schemaId === 'org.gnome.desktop.wm.keybindings') {
@@ -368,14 +467,17 @@ export function restoreSystemShortcut(schemaId, schemaKey, settings, {getSetting
 
 /**
  * Restore all system shortcuts currently recorded in Liswitch's backup storage.
- * Called upon disable() and extension removal.
+ * Called upon disable() and extension removal (preserving freed-system-shortcuts
+ * unless clearIntent is true so temporary disables such as screen lock restore
+ * cleanly on unlock).
  *
  * @param {Gio.Settings} settings - Liswitch GSettings instance
  * @param {object} [options]
  * @param {Function|null} [options.getSettings] - Settings factory override
+ * @param {boolean} [options.clearIntent=false] - Also clear freed-system-shortcuts intent
  * @returns {number} Number of restored settings
  */
-export function restoreAllSystemShortcuts(settings, {getSettings = null} = {}) {
+export function restoreAllSystemShortcuts(settings, {getSettings = null, clearIntent = false} = {}) {
     if (!settings)
         return 0;
 
@@ -383,14 +485,7 @@ export function restoreAllSystemShortcuts(settings, {getSettings = null} = {}) {
     const createSettings = getSettings || (id => new Gio.Settings({schema_id: id}));
 
     try {
-        let backupMap = {};
-        try {
-            const backupJson = settings.get_string('backup-system-shortcuts');
-            if (backupJson && backupJson.trim())
-                backupMap = JSON.parse(backupJson);
-        } catch {
-            backupMap = {};
-        }
+        const backupMap = _readJsonMap(settings, 'backup-system-shortcuts');
 
         for (const [key, entry] of Object.entries(backupMap)) {
             try {
@@ -408,15 +503,126 @@ export function restoreAllSystemShortcuts(settings, {getSettings = null} = {}) {
         }
 
         if (Object.keys(backupMap).length > 0) {
-            settings.set_string('backup-system-shortcuts', '{}');
+            _writeJsonMap(settings, 'backup-system-shortcuts', {});
             settings.set_strv('backup-system-switch-keys', []);
             settings.set_strv('backup-system-switch-backward-keys', []);
+        }
+
+        if (clearIntent) {
+            const freedMap = _readJsonMap(settings, 'freed-system-shortcuts');
+            if (Object.keys(freedMap).length > 0)
+                _writeJsonMap(settings, 'freed-system-shortcuts', {});
         }
     } catch (e) {
         Log.warn('HotkeyManager: error in restoreAllSystemShortcuts:', e.message);
     }
 
     return restoredCount;
+}
+
+/**
+ * Re-apply user-approved system shortcut overrides after temporary disable() (e.g. screen lock).
+ * Only frees conflicts that both match an active Liswitch hotkey and are listed in
+ * `freed-system-shortcuts`.
+ *
+ * @param {Gio.Settings} settings - Liswitch GSettings instance
+ * @param {object} [options]
+ * @param {object|null} [options.schemaSource] - Schema source override
+ * @param {Function|null} [options.getSettings] - Settings factory override
+ * @returns {number} Number of re-applied overrides
+ */
+export function reapplyFreedSystemShortcuts(settings, {schemaSource = null, getSettings = null} = {}) {
+    if (!settings)
+        return 0;
+
+    const freedMap = _readJsonMap(settings, 'freed-system-shortcuts');
+    if (Object.keys(freedMap).length === 0)
+        return 0;
+
+    const conflicts = checkConflicts(settings, {schemaSource, getSettings});
+    if (conflicts.length === 0)
+        return 0;
+
+    let reappliedCount = 0;
+    for (const conflict of conflicts) {
+        const backupKey = `${conflict.schemaId}:${conflict.schemaKey}`;
+        const intent = freedMap[backupKey];
+        if (!intent || !Array.isArray(intent.shortcuts))
+            continue;
+
+        if (intent.shortcuts.includes(conflict.normalized)) {
+            if (freeSystemShortcut(conflict, settings, {getSettings}))
+                reappliedCount++;
+        }
+    }
+
+    return reappliedCount;
+}
+
+/**
+ * Remove stale system override intents (and restore their backups if active) when
+ * none of Liswitch's configured hotkeys use the overridden shortcut anymore.
+ *
+ * @param {Gio.Settings} settings - Liswitch GSettings instance
+ * @param {object} [options]
+ * @param {Function|null} [options.getSettings] - Settings factory override
+ * @returns {number} Number of cleaned-up override entries
+ */
+export function cleanupUnusedSystemOverrides(settings, {getSettings = null} = {}) {
+    if (!settings)
+        return 0;
+
+    const freedMap = _readJsonMap(settings, 'freed-system-shortcuts');
+    const freedKeys = Object.keys(freedMap);
+    if (freedKeys.length === 0)
+        return 0;
+
+    const activeShortcuts = new Set();
+    for (const key of HOTKEY_KEYS) {
+        try {
+            const arr = settings.get_strv(key);
+            for (const sc of arr) {
+                const norm = normalizeShortcut(sc);
+                if (norm)
+                    activeShortcuts.add(norm);
+            }
+        } catch {
+            // Ignore
+        }
+    }
+
+    const backupMap = _readJsonMap(settings, 'backup-system-shortcuts');
+    let cleanedCount = 0;
+    let freedModified = false;
+
+    for (const backupKey of freedKeys) {
+        const entry = freedMap[backupKey];
+        const shortcuts = Array.isArray(entry?.shortcuts) ? entry.shortcuts : [];
+        const remaining = shortcuts.filter(s => activeShortcuts.has(s));
+
+        if (remaining.length === 0) {
+            if (backupMap[backupKey]) {
+                restoreSystemShortcut(entry.schemaId, entry.schemaKey, settings, {getSettings});
+                // restoreSystemShortcut already updated freed-system-shortcuts on disk; sync local copy
+                delete freedMap[backupKey];
+            } else {
+                delete freedMap[backupKey];
+                freedModified = true;
+            }
+            cleanedCount++;
+        } else if (remaining.length !== shortcuts.length) {
+            freedMap[backupKey] = {
+                ...entry,
+                shortcuts: remaining,
+            };
+            freedModified = true;
+        }
+    }
+
+    if (freedModified)
+        _writeJsonMap(settings, 'freed-system-shortcuts', freedMap);
+
+    return cleanedCount;
 }
 
 /**
@@ -431,11 +637,15 @@ export class HotkeyManager {
      * @param {InputSourceService} inputSourceService - Service for switching input sources
      * @param {object} [options]
      * @param {object|null} [options.wm] - Window manager override (e.g. mock WM for testing)
+     * @param {Function|null} [options.getSettings] - System settings factory override (for testing)
+     * @param {object|null} [options.schemaSource] - Schema source override (for testing)
      */
-    constructor(settings, inputSourceService, {wm = null} = {}) {
+    constructor(settings, inputSourceService, {wm = null, getSettings = null, schemaSource = null} = {}) {
         this._settings = settings;
         this._inputSourceService = inputSourceService;
         this._wm = wm || Main?.wm || null;
+        this._getSettings = getSettings;
+        this._schemaSource = schemaSource;
 
         this._boundHotkeys = new Set();
         this._settingsSignals = [];
@@ -443,7 +653,8 @@ export class HotkeyManager {
     }
 
     /**
-     * Enable hotkey manager: check conflicts, register keybindings, and listen for changes.
+     * Enable hotkey manager: re-apply user-approved overrides, check conflicts,
+     * register keybindings, and listen for changes.
      */
     enable() {
         if (this._enabled)
@@ -453,8 +664,19 @@ export class HotkeyManager {
         if (!this._wm && Main?.wm)
             this._wm = Main.wm;
 
-        // Audit conflicts with system keybindings
-        const conflicts = checkConflicts(this._settings);
+        const checkOpts = {
+            schemaSource: this._schemaSource,
+            getSettings: this._getSettings,
+        };
+
+        // Re-apply system shortcut overrides explicitly approved by the user
+        // (e.g. after a temporary disable() from screen lock / session mode switch)
+        const reapplied = reapplyFreedSystemShortcuts(this._settings, checkOpts);
+        if (reapplied > 0)
+            Log.debug(`HotkeyManager: re-applied ${reapplied} user-approved system shortcut override(s)`);
+
+        // Audit remaining conflicts with system keybindings
+        const conflicts = checkConflicts(this._settings, checkOpts);
         for (const c of conflicts) {
             Log.warn(`Hotkey conflict detected: shortcut "${c.shortcut}" (${c.hotkeyKey}) is currently assigned to ${c.schemaId} -> ${c.schemaKey}`);
         }
@@ -465,10 +687,20 @@ export class HotkeyManager {
         // Listen for GSettings changes to dynamically update keybindings without restarting Shell
         if (this._settings) {
             for (const key of HOTKEY_KEYS) {
+                if (key === 'convert-hotkey')
+                    continue;
                 const id = this._settings.connect(`changed::${key}`, () => {
                     this._onHotkeySettingChanged(key);
                 });
                 this._settingsSignals.push({obj: this._settings, id});
+            }
+
+            if (_hasSettingsKey(this._settings, 'freed-system-shortcuts')) {
+                const freedId = this._settings.connect('changed::freed-system-shortcuts', () => {
+                    if (this._enabled)
+                        this._registerAll();
+                });
+                this._settingsSignals.push({obj: this._settings, id: freedId});
             }
         }
 
@@ -648,11 +880,14 @@ export class HotkeyManager {
         this._boundHotkeys.clear();
 
         // Restore any system shortcuts freed during user configuration
-        restoreAllSystemShortcuts(this._settings);
+        // (preserving freed-system-shortcuts intent for temporary disables such as screen lock)
+        restoreAllSystemShortcuts(this._settings, {getSettings: this._getSettings});
 
         this._settings = null;
         this._inputSourceService = null;
         this._wm = null;
+        this._getSettings = null;
+        this._schemaSource = null;
     }
 
     /**
