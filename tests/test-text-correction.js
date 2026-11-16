@@ -3,7 +3,11 @@
 
 import GLib from 'gi://GLib';
 import {TextTranslator} from '../src/textTranslator.js';
-import {TextCorrectionManager} from '../src/textCorrection.js';
+import {
+    TextCorrectionManager,
+    DEFAULT_TERMINAL_APPS,
+    isTerminalWindow,
+} from '../src/textCorrection.js';
 import {
     assert,
     assertEqual,
@@ -574,6 +578,356 @@ console.log('Test 15: Clipboard preservation/restoration after Ctrl+V and timer 
         assertEqual(clipboard.history.length, 1, 'Clipboard restore must not fire after destroy()');
     }
 
+    console.log('  -> PASS');
+}
+
+// Test 16: Terminal window detection (defaults, custom list, and non-terminal safety)
+console.log('Test 16: Terminal application detection (Console, Ptyxis, Alacritty, kitty, gnome-terminal, custom)...');
+{
+    assert(DEFAULT_TERMINAL_APPS.includes('org.gnome.Console'), 'Defaults include org.gnome.Console');
+    assert(DEFAULT_TERMINAL_APPS.includes('Alacritty'), 'Defaults include Alacritty');
+    assert(DEFAULT_TERMINAL_APPS.includes('kitty'), 'Defaults include kitty');
+
+    const consoleWin = new MockWindow({id: 1, gtkAppId: 'org.gnome.Console', wmClass: 'kgx'});
+    const ptyxisWin = new MockWindow({id: 2, gtkAppId: 'app.devsuite.Ptyxis', wmClass: 'ptyxis'});
+    const alacrittyWin = new MockWindow({id: 3, wmClass: 'Alacritty'});
+    const kittyWin = new MockWindow({id: 4, wmClass: 'kitty'});
+    const gnomeTermWin = new MockWindow({id: 5, gtkAppId: 'org.gnome.Terminal', wmClass: 'gnome-terminal-server'});
+    const editorWin = new MockWindow({id: 6, gtkAppId: 'org.gnome.TextEditor', wmClass: 'org.gnome.TextEditor'});
+    const rstudioWin = new MockWindow({id: 7, gtkAppId: 'com.rstudio.RStudio', wmClass: 'RStudio'});
+    const customTermWin = new MockWindow({id: 8, gtkAppId: 'io.wezfurlong.customterm', wmClass: 'myterm'});
+
+    assert(isTerminalWindow(consoleWin), 'org.gnome.Console detected as terminal');
+    assert(isTerminalWindow(ptyxisWin), 'Ptyxis detected as terminal');
+    assert(isTerminalWindow(alacrittyWin), 'Alacritty detected as terminal');
+    assert(isTerminalWindow(kittyWin), 'kitty detected as terminal');
+    assert(isTerminalWindow(gnomeTermWin), 'gnome-terminal detected as terminal');
+    assert(!isTerminalWindow(editorWin), 'TextEditor must not be treated as terminal');
+    assert(!isTerminalWindow(rstudioWin, [...DEFAULT_TERMINAL_APPS, 'st']), 'RStudio must not falsely match "st"');
+
+    // Extend list via GSettings
+    const prevApps = settings.get_strv('convert-terminal-apps');
+    settings.set_strv('convert-terminal-apps', [...prevApps, 'myterm']);
+    assert(isTerminalWindow(customTermWin, settings.get_strv('convert-terminal-apps')), 'Custom terminal matched when added to GSettings');
+    settings.set_strv('convert-terminal-apps', prevApps);
+
+    console.log('  -> PASS');
+}
+
+// Test 17: Terminal paste (Ctrl+Shift+V) vs normal app paste (Ctrl+V)
+console.log('Test 17: Terminal paste uses Ctrl+Shift+V while normal app uses Ctrl+V...');
+{
+    const EVDEV_BACKSPACE = 14;
+    const EVDEV_LEFTCTRL = 29;
+    const EVDEV_LEFTSHIFT = 42;
+    const EVDEV_V = 47;
+
+    function createSyncClipboard(initialText) {
+        return {
+            currentText: initialText,
+            history: [],
+            get_text(_type, cb) {
+                cb(this, this.currentText);
+            },
+            set_text(_type, text) {
+                this.currentText = text;
+                this.history.push(text);
+            },
+        };
+    }
+
+    function createVDev() {
+        return {
+            events: [],
+            notify_key(_t, keycode, state) {
+                this.events.push({keycode, state});
+            },
+        };
+    }
+
+    function runLoopFor(ms, stopWhen = null) {
+        const loop = new GLib.MainLoop(null, false);
+        let checkId = 0;
+        let timedOut = false;
+        if (stopWhen) {
+            checkId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10, () => {
+                if (stopWhen()) {
+                    checkId = 0;
+                    loop.quit();
+                    return GLib.SOURCE_REMOVE;
+                }
+                return GLib.SOURCE_CONTINUE;
+            });
+        }
+        const timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+            timedOut = true;
+            if (checkId) {
+                GLib.Source.remove(checkId);
+                checkId = 0;
+            }
+            loop.quit();
+            return GLib.SOURCE_REMOVE;
+        });
+        loop.run();
+        if (!timedOut)
+            GLib.Source.remove(timeoutId);
+    }
+
+    // 17a. Terminal focused (org.gnome.Console) -> Ctrl+Shift+V
+    {
+        const svc = new MockInputSourceService();
+        const clipboard = createSyncClipboard('saved-term');
+        const vdev = createVDev();
+        const mockDisplay = {
+            focus_window: new MockWindow({id: 10, gtkAppId: 'org.gnome.Console', wmClass: 'kgx'}),
+        };
+        const mgr = new TextCorrectionManager(settings, svc, {
+            clipboard,
+            virtualDevice: vdev,
+            display: mockDisplay,
+        });
+        mgr.enable();
+
+        for (const ch of 'ghbdtn')
+            mgr.pushChar(ch);
+        assert(mgr.convertLastWord(), 'convertLastWord must succeed in terminal');
+
+        runLoopFor(300, () => clipboard.history.length >= 2);
+
+        const pressed = vdev.events.filter(e => e.state === 1).map(e => e.keycode);
+        const released = vdev.events.filter(e => e.state === 0).map(e => e.keycode);
+        assertEqual(pressed.filter(k => k === EVDEV_BACKSPACE).length, 6, '6 Backspaces pressed in terminal');
+        assert(pressed.includes(EVDEV_LEFTCTRL), 'LeftCtrl pressed in terminal');
+        assert(pressed.includes(EVDEV_LEFTSHIFT), 'LeftShift pressed in terminal (Ctrl+Shift+V)');
+        assert(pressed.includes(EVDEV_V), 'V pressed in terminal');
+        assert(released.includes(EVDEV_LEFTSHIFT), 'LeftShift released in terminal');
+        assertEqual(clipboard.currentText, 'saved-term', 'Clipboard restored after terminal paste');
+
+        mgr.destroy();
+    }
+
+    // 17b. Regular editor focused -> Ctrl+V (no LeftShift)
+    {
+        const svc = new MockInputSourceService();
+        const clipboard = createSyncClipboard('saved-gui');
+        const vdev = createVDev();
+        const mockDisplay = {
+            focus_window: new MockWindow({id: 11, gtkAppId: 'org.gnome.TextEditor', wmClass: 'org.gnome.TextEditor'}),
+        };
+        const mgr = new TextCorrectionManager(settings, svc, {
+            clipboard,
+            virtualDevice: vdev,
+            display: mockDisplay,
+        });
+        mgr.enable();
+
+        for (const ch of 'ghbdtn')
+            mgr.pushChar(ch);
+        assert(mgr.convertLastWord(), 'convertLastWord must succeed in GUI editor');
+
+        runLoopFor(300, () => clipboard.history.length >= 2);
+
+        const shifts = vdev.events.filter(e => e.keycode === EVDEV_LEFTSHIFT);
+        const vs = vdev.events.filter(e => e.keycode === EVDEV_V && e.state === 1);
+        assertEqual(shifts.length, 0, 'LeftShift must NOT be emitted in regular GUI editor');
+        assertEqual(vs.length, 1, 'V pressed once in GUI editor');
+        assertEqual(clipboard.currentText, 'saved-gui', 'Clipboard restored after GUI paste');
+
+        mgr.destroy();
+    }
+
+    console.log('  -> PASS');
+}
+
+// Test 18: Selected text conversion (convertSelection / convert with empty buffer)
+console.log('Test 18: Optional selected text conversion in GUI and terminal windows...');
+{
+    const EVDEV_BACKSPACE = 14;
+    const EVDEV_LEFTCTRL = 29;
+    const EVDEV_LEFTSHIFT = 42;
+    const EVDEV_C = 46;
+    const EVDEV_V = 47;
+
+    function createSelectionClipboard(initialText, selectionProvider) {
+        return {
+            currentText: initialText,
+            history: [],
+            get_text(_type, cb) {
+                cb(this, this.currentText);
+            },
+            set_text(_type, text) {
+                this.currentText = text;
+                this.history.push(text);
+            },
+            simulateCopy() {
+                const copied = selectionProvider();
+                if (copied !== null && copied !== undefined)
+                    this.currentText = copied;
+            },
+        };
+    }
+
+    function createSelectionVDev(clipboard) {
+        return {
+            events: [],
+            notify_key(_t, keycode, state) {
+                this.events.push({keycode, state});
+                if (keycode === EVDEV_C && state === 1)
+                    clipboard.simulateCopy();
+            },
+        };
+    }
+
+    function runLoopFor(ms, stopWhen = null) {
+        const loop = new GLib.MainLoop(null, false);
+        let checkId = 0;
+        let timedOut = false;
+        if (stopWhen) {
+            checkId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10, () => {
+                if (stopWhen()) {
+                    checkId = 0;
+                    loop.quit();
+                    return GLib.SOURCE_REMOVE;
+                }
+                return GLib.SOURCE_CONTINUE;
+            });
+        }
+        const timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+            timedOut = true;
+            if (checkId) {
+                GLib.Source.remove(checkId);
+                checkId = 0;
+            }
+            loop.quit();
+            return GLib.SOURCE_REMOVE;
+        });
+        loop.run();
+        if (!timedOut)
+            GLib.Source.remove(timeoutId);
+    }
+
+    // 18a. convert() returns false when buffer is empty and convert-selection-enabled is false
+    {
+        settings.set_boolean('convert-selection-enabled', false);
+        const svc = new MockInputSourceService();
+        const clipboard = createSelectionClipboard('keep', () => 'ghbdtn');
+        const vdev = createSelectionVDev(clipboard);
+        const mgr = new TextCorrectionManager(settings, svc, {clipboard, virtualDevice: vdev});
+        mgr.enable();
+
+        assertEqual(mgr.convert(), false, 'convert() with empty buffer returns false when selection conversion disabled');
+        assertEqual(vdev.events.length, 0, 'No virtual keys emitted when disabled');
+        mgr.destroy();
+    }
+
+    // 18b. GUI selection conversion via convert() when convert-selection-enabled is true
+    {
+        settings.set_boolean('convert-selection-enabled', true);
+        const svc = new MockInputSourceService();
+        const clipboard = createSelectionClipboard('saved-clip', () => 'ghbdtn vbh');
+        const vdev = createSelectionVDev(clipboard);
+        const mockDisplay = {
+            focus_window: new MockWindow({id: 20, gtkAppId: 'org.gnome.TextEditor', wmClass: 'org.gnome.TextEditor'}),
+        };
+        const mgr = new TextCorrectionManager(settings, svc, {
+            clipboard,
+            virtualDevice: vdev,
+            display: mockDisplay,
+        });
+        mgr.enable();
+
+        assert(mgr.convert(), 'convert() initiates selection conversion when enabled');
+        runLoopFor(400, () => clipboard.history.length >= 3 && clipboard.currentText === 'saved-clip');
+
+        assertEqual(vdev.events.filter(e => e.keycode === EVDEV_BACKSPACE).length, 0, 'Selection conversion emits 0 Backspaces');
+        assertEqual(vdev.events.filter(e => e.keycode === EVDEV_C && e.state === 1).length, 1, 'Ctrl+C emitted once');
+        assertEqual(vdev.events.filter(e => e.keycode === EVDEV_V && e.state === 1).length, 1, 'Ctrl+V emitted once');
+        assertEqual(vdev.events.filter(e => e.keycode === EVDEV_LEFTSHIFT).length, 0, 'No Shift in GUI selection copy/paste');
+        assert(clipboard.history.includes('привет мир'), 'Converted selection placed on clipboard');
+        assertEqual(clipboard.currentText, 'saved-clip', 'Prior clipboard text restored after selection paste');
+        assertEqual(svc.getCurrentIndex(), 1, 'Active layout switched to Russian');
+
+        mgr.destroy();
+    }
+
+    // 18c. Terminal selection conversion uses Ctrl+Shift+C and Ctrl+Shift+V
+    {
+        const svc = new MockInputSourceService();
+        const clipboard = createSelectionClipboard('term-clip', () => 'ghbdtn');
+        const vdev = createSelectionVDev(clipboard);
+        const mockDisplay = {
+            focus_window: new MockWindow({id: 21, wmClass: 'kitty'}),
+        };
+        const mgr = new TextCorrectionManager(settings, svc, {
+            clipboard,
+            virtualDevice: vdev,
+            display: mockDisplay,
+        });
+        mgr.enable();
+
+        assert(mgr.convertSelection(), 'convertSelection() initiates in terminal');
+        runLoopFor(400, () => clipboard.history.length >= 3 && clipboard.currentText === 'term-clip');
+
+        assertEqual(vdev.events.filter(e => e.keycode === EVDEV_C && e.state === 1).length, 1, 'C emitted in terminal');
+        assertEqual(vdev.events.filter(e => e.keycode === EVDEV_V && e.state === 1).length, 1, 'V emitted in terminal');
+        assertEqual(vdev.events.filter(e => e.keycode === EVDEV_LEFTSHIFT && e.state === 1).length, 2, 'LeftShift emitted for both Ctrl+Shift+C and Ctrl+Shift+V');
+        assertEqual(vdev.events.filter(e => e.keycode === EVDEV_LEFTCTRL && e.state === 1).length, 2, 'LeftCtrl emitted twice');
+        assert(clipboard.history.includes('привет'), 'Converted selection placed on clipboard');
+        assertEqual(clipboard.currentText, 'term-clip', 'Terminal clipboard restored');
+
+        mgr.destroy();
+    }
+
+    // 18d. Empty selection restores prior clipboard and does not paste or switch layout
+    {
+        const svc = new MockInputSourceService();
+        const clipboard = createSelectionClipboard('untouched', () => null);
+        const vdev = createSelectionVDev(clipboard);
+        const mockDisplay = {
+            focus_window: new MockWindow({id: 22, gtkAppId: 'org.gnome.TextEditor'}),
+        };
+        const mgr = new TextCorrectionManager(settings, svc, {
+            clipboard,
+            virtualDevice: vdev,
+            display: mockDisplay,
+        });
+        mgr.enable();
+
+        assert(mgr.convertSelection(), 'convertSelection() starts check');
+        runLoopFor(200);
+
+        assertEqual(vdev.events.filter(e => e.keycode === EVDEV_V).length, 0, 'Paste must NOT fire when nothing was selected');
+        assertEqual(svc.getCurrentIndex(), 0, 'Layout must NOT switch when nothing was selected');
+        assertEqual(clipboard.currentText, 'untouched', 'Prior clipboard restored when nothing was selected');
+
+        mgr.destroy();
+    }
+
+    // 18e. Sensitive window blocks convertSelection()
+    {
+        const svc = new MockInputSourceService();
+        const clipboard = createSelectionClipboard('secret', () => 'ghbdtn');
+        const vdev = createSelectionVDev(clipboard);
+        const mockDisplay = {
+            focus_window: {
+                get_wm_class: () => 'org.gnome.Settings',
+                get_title: () => 'Enter Password',
+                get_sandboxed_app_id: () => '',
+            },
+        };
+        const mgr = new TextCorrectionManager(settings, svc, {
+            clipboard,
+            virtualDevice: vdev,
+            display: mockDisplay,
+        });
+        mgr.enable();
+
+        assertEqual(mgr.convertSelection(), false, 'convertSelection() blocked in sensitive window');
+        assertEqual(vdev.events.length, 0, 'No key events emitted in sensitive window');
+        mgr.destroy();
+    }
+
+    settings.set_boolean('convert-selection-enabled', false);
     console.log('  -> PASS');
 }
 

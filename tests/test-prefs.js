@@ -33,6 +33,7 @@ import {
     assertEquals,
     MockSettings,
     createMockSettings,
+    createMemorySettings,
 } from './helpers.js';
 
 const {
@@ -167,12 +168,6 @@ function runTests() {
         settings.set_boolean('show-osd', false);
         assertEquals(settings.get_boolean('show-osd'), false, 'Settings show-osd toggled');
 
-        settings.set_string('indicator-position', 'center');
-        assertEquals(settings.get_string('indicator-position'), 'center', 'Settings indicator-position updated');
-
-        settings.set_string('osd-position', 'top');
-        assertEquals(settings.get_string('osd-position'), 'top', 'Settings osd-position updated');
-
         // Change text correction keys
         settings.set_boolean('convert-text-enabled', true);
         assertEquals(settings.get_boolean('convert-text-enabled'), true, 'Settings convert-text-enabled toggled');
@@ -182,6 +177,30 @@ function runTests() {
 
         settings.set_strv('convert-hotkey', ['<Control><Shift>space']);
         assertEquals(settings.get_strv('convert-hotkey')[0], '<Control><Shift>space', 'Settings convert-hotkey updated');
+
+        // Change positioning & selection/terminal keys
+        settings.set_string('indicator-position', 'center');
+        assertEquals(settings.get_string('indicator-position'), 'center', 'Settings indicator-position updated');
+
+        settings.set_string('osd-position', 'top');
+        assertEquals(settings.get_string('osd-position'), 'top', 'Settings osd-position updated');
+
+        settings.set_boolean('convert-selection-enabled', true);
+        assertEquals(settings.get_boolean('convert-selection-enabled'), true, 'Settings convert-selection-enabled toggled');
+
+        settings.set_strv('convert-terminal-apps', ['org.gnome.Console', 'custom-term']);
+        assertEquals(settings.get_strv('convert-terminal-apps').length, 2, 'Settings convert-terminal-apps updated');
+
+        // Verify real compiled GSettings schema defaults and choices for new keys
+        const realSchemaSettings = createMemorySettings();
+        assertEquals(realSchemaSettings.get_string('indicator-position'), 'system', 'Schema default indicator-position is system');
+        assertEquals(realSchemaSettings.get_string('osd-position'), 'center', 'Schema default osd-position is center');
+        assertEquals(realSchemaSettings.get_boolean('convert-selection-enabled'), false, 'Schema default convert-selection-enabled is false');
+        assert(realSchemaSettings.get_strv('convert-terminal-apps').includes('org.gnome.Console'), 'Schema default convert-terminal-apps includes org.gnome.Console');
+        realSchemaSettings.set_string('indicator-position', 'left');
+        realSchemaSettings.set_string('osd-position', 'bottom');
+        assertEquals(realSchemaSettings.get_string('indicator-position'), 'left', 'Schema accepts indicator-position=left');
+        assertEquals(realSchemaSettings.get_string('osd-position'), 'bottom', 'Schema accepts osd-position=bottom');
 
         print('  -> PASS');
     }

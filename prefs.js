@@ -27,6 +27,7 @@ import {
     parseAppDefaultLayouts,
     serializeAppDefaultLayouts,
 } from './src/windowMemory.js';
+import {DEFAULT_TERMINAL_APPS} from './src/textCorrection.js';
 
 let _GnomeDesktop = null;
 try {
@@ -820,7 +821,7 @@ class LiswitchGeneralPage extends Adw.PreferencesPage {
 
         const osdRow = new Adw.SwitchRow({
             title: _('Show OSD Pop-up'),
-            subtitle: _('Display a brief centered notification when layout changes'),
+            subtitle: _('Display a brief notification when layout changes'),
         });
         osdGroup.add(osdRow);
 
@@ -1989,7 +1990,7 @@ class LiswitchAboutPage extends Adw.PreferencesPage {
 }
 
 /**
- * Page 4: Text Correction Preferences («Исправление текста»)
+ * Page 5: Text Correction Preferences («Исправление текста»)
  *
  * Configures wrong-layout text correction (F6), double Left Shift trigger,
  * and security disclosures.
@@ -2052,6 +2053,27 @@ class LiswitchCorrectionPage extends Adw.PreferencesPage {
             Gio.SettingsBindFlags.DEFAULT
         );
 
+        const selectionRow = new Adw.SwitchRow({
+            title: _('Convert Selected Text'),
+            subtitle: _('When the typing buffer is empty, the manual hotkey copies, converts, and replaces selected text'),
+        });
+        configGroup.add(selectionRow);
+        if (this._settings.settings_schema?.has_key?.('convert-selection-enabled') !== false) {
+            this._settings.bind(
+                'convert-selection-enabled',
+                selectionRow,
+                'active',
+                Gio.SettingsBindFlags.DEFAULT
+            );
+        }
+
+        enableRow.bind_property(
+            'active',
+            selectionRow,
+            'sensitive',
+            GObject.BindingFlags.DEFAULT | GObject.BindingFlags.SYNC_CREATE
+        );
+
         // Manual Shortcut Group
         const shortcutGroup = new Adw.PreferencesGroup({
             title: _('Manual Hotkey'),
@@ -2066,6 +2088,105 @@ class LiswitchCorrectionPage extends Adw.PreferencesPage {
             defaultShortcuts: ['<Shift>Pause'],
         });
         this._shortcutGroup.refreshAllRows();
+
+        // Terminal Applications Group (Ctrl+Shift+V / Ctrl+Shift+C)
+        this._buildTerminalAppsGroup();
+    }
+
+    _buildTerminalAppsGroup() {
+        const terminalGroup = new Adw.PreferencesGroup({
+            title: _('Terminal Applications'),
+            description: _('Applications where Ctrl+Shift+V and Ctrl+Shift+C are used instead of Ctrl+V and Ctrl+C'),
+        });
+
+        const resetBtn = new Gtk.Button({
+            icon_name: 'edit-undo-symbolic',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+            tooltip_text: _('Reset terminal list to defaults'),
+        });
+        resetBtn.connect('clicked', () => {
+            if (this._settings.settings_schema?.has_key?.('convert-terminal-apps') !== false)
+                this._settings.set_strv('convert-terminal-apps', [...DEFAULT_TERMINAL_APPS]);
+        });
+        terminalGroup.set_header_suffix(resetBtn);
+        this.add(terminalGroup);
+
+        const addEntryRow = new Adw.EntryRow({
+            title: _('Add terminal app ID or WM_CLASS (e.g. org.gnome.Console)'),
+            show_apply_button: true,
+        });
+        terminalGroup.add(addEntryRow);
+
+        const terminalExpander = new Adw.ExpanderRow({
+            title: _('Configured Terminals'),
+            subtitle: '',
+        });
+        terminalGroup.add(terminalExpander);
+
+        const itemRows = [];
+
+        const refreshTerminalList = () => {
+            for (const r of itemRows) {
+                try {
+                    terminalExpander.remove(r);
+                } catch {
+                    // Ignore
+                }
+            }
+            itemRows.length = 0;
+
+            const list = this._settings.settings_schema?.has_key?.('convert-terminal-apps') !== false
+                ? this._settings.get_strv('convert-terminal-apps')
+                : [...DEFAULT_TERMINAL_APPS];
+
+            if (list.length === 0) {
+                terminalExpander.subtitle = _('No terminal applications configured');
+                return;
+            }
+
+            terminalExpander.subtitle = _('%d terminal(s) configured').format(list.length);
+
+            for (const appId of list) {
+                const row = new Adw.ActionRow({
+                    title: appId,
+                });
+
+                const delBtn = new Gtk.Button({
+                    icon_name: 'user-trash-symbolic',
+                    valign: Gtk.Align.CENTER,
+                    css_classes: ['flat'],
+                    tooltip_text: _('Remove from terminal list'),
+                });
+                delBtn.connect('clicked', () => {
+                    const currentList = this._settings.get_strv('convert-terminal-apps');
+                    const updated = currentList.filter(item => item !== appId);
+                    this._settings.set_strv('convert-terminal-apps', updated);
+                });
+                row.add_suffix(delBtn);
+
+                terminalExpander.add_row(row);
+                itemRows.push(row);
+            }
+        };
+
+        addEntryRow.connect('apply', () => {
+            const val = normalizeAppId(addEntryRow.text);
+            if (val && this._settings.settings_schema?.has_key?.('convert-terminal-apps') !== false) {
+                const list = this._settings.get_strv('convert-terminal-apps');
+                const exists = list.some(item => item.trim().toLowerCase() === val.toLowerCase());
+                if (!exists) {
+                    list.push(val);
+                    this._settings.set_strv('convert-terminal-apps', list);
+                }
+            }
+            addEntryRow.text = '';
+        });
+
+        if (this._settings.settings_schema?.has_key?.('convert-terminal-apps') !== false)
+            this._tracker.connect(this._settings, 'changed::convert-terminal-apps', refreshTerminalList);
+
+        refreshTerminalList();
     }
 
     cleanup() {

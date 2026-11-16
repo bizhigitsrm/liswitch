@@ -191,5 +191,17 @@
       <description>Keybinding to trigger layout conversion of the most recently typed word.</description>
     </key>
 
+    <key name="convert-selection-enabled" type="b">
+      <default>false</default>
+      <summary>Allow converting selected text</summary>
+      <description>When the typing buffer is empty, pressing the manual text correction shortcut copies the current selection, converts its layout, and pastes it back.</description>
+    </key>
+
+    <key name="convert-terminal-apps" type="as">
+      <default>['org.gnome.Console', 'kgx', 'org.gnome.Ptyxis', 'app.devsuite.Ptyxis', 'ptyxis', 'org.gnome.Terminal', 'gnome-terminal', 'gnome-terminal-server', 'Alacritty', 'kitty', 'foot', 'org.wezfurlong.wezterm', 'com.mitchellh.ghostty', 'com.raggesilver.BlackBox', 'com.gexperts.Tilix', 'org.kde.konsole']</default>
+      <summary>Terminal applications using Ctrl+Shift+V</summary>
+      <description>List of application IDs or WM_CLASS values where text correction emulates Ctrl+Shift+V (and Ctrl+Shift+C) instead of Ctrl+V.</description>
+    </key>
+
   </schema>
 </schemalist>

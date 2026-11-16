@@ -41,7 +41,75 @@ try {
 // Standard Linux evdev keycodes
 const EVDEV_BACKSPACE = 14;
 const EVDEV_LEFTCTRL = 29;
+const EVDEV_LEFTSHIFT = 42;
+const EVDEV_C = 46;
 const EVDEV_V = 47;
+
+// Default terminal application IDs / WM_CLASS names using Ctrl+Shift+V/C
+export const DEFAULT_TERMINAL_APPS = [
+    'org.gnome.Console',
+    'kgx',
+    'org.gnome.Ptyxis',
+    'app.devsuite.Ptyxis',
+    'ptyxis',
+    'org.gnome.Terminal',
+    'gnome-terminal',
+    'gnome-terminal-server',
+    'Alacritty',
+    'kitty',
+    'foot',
+    'org.wezfurlong.wezterm',
+    'com.mitchellh.ghostty',
+    'com.raggesilver.BlackBox',
+    'com.gexperts.Tilix',
+    'org.kde.konsole',
+];
+
+function _normalizeAppIdentifier(value) {
+    if (typeof value !== 'string')
+        return '';
+    let normalized = value.trim().toLowerCase();
+    if (normalized.endsWith('.desktop'))
+        normalized = normalized.slice(0, -'.desktop'.length);
+    return normalized;
+}
+
+/**
+ * Determine whether a window belongs to a terminal application requiring Ctrl+Shift+V/C.
+ *
+ * @param {object|null} window - Meta.Window or mock window object
+ * @param {string[]} [terminalApps=DEFAULT_TERMINAL_APPS] - Configured terminal app IDs / WM_CLASS tokens
+ * @returns {boolean}
+ */
+export function isTerminalWindow(window, terminalApps = DEFAULT_TERMINAL_APPS) {
+    if (!window || !Array.isArray(terminalApps) || terminalApps.length === 0)
+        return false;
+
+    const candidates = [
+        window.get_sandboxed_app_id?.(),
+        window.get_gtk_application_id?.(),
+        window.get_wm_class?.(),
+        window.get_wm_class_instance?.(),
+    ]
+        .map(_normalizeAppIdentifier)
+        .filter(Boolean);
+
+    if (candidates.length === 0)
+        return false;
+
+    const patterns = terminalApps
+        .map(_normalizeAppIdentifier)
+        .filter(Boolean);
+
+    for (const pat of patterns) {
+        for (const id of candidates) {
+            if (id === pat || id.endsWith(`.${pat}`) || id.startsWith(`${pat}-`))
+                return true;
+        }
+    }
+
+    return false;
+}
 
 // Sensitive app and window tokens for password / credential protection
 const SENSITIVE_PATTERNS = [
@@ -124,6 +192,7 @@ export const TextCorrectionManager = GObject.registerClass({
         this._focusSignalId = 0;
         this._inactivityTimerId = 0;
         this._clipboardReadTimeoutId = 0;
+        this._copyTimeoutId = 0;
         this._pasteTimeoutId = 0;
         this._restoreClipboardTimeoutId = 0;
         this._operationId = 0;
@@ -207,6 +276,11 @@ export const TextCorrectionManager = GObject.registerClass({
             this._clipboardReadTimeoutId = 0;
         }
 
+        if (this._copyTimeoutId) {
+            GLib.Source.remove(this._copyTimeoutId);
+            this._copyTimeoutId = 0;
+        }
+
         if (this._pasteTimeoutId) {
             GLib.Source.remove(this._pasteTimeoutId);
             this._pasteTimeoutId = 0;
@@ -257,7 +331,7 @@ export const TextCorrectionManager = GObject.registerClass({
                 flags,
                 mode,
                 () => {
-                    this.convertLastWord();
+                    this.convert();
                 }
             );
             this._hotkeyRegistered = true;
@@ -431,6 +505,40 @@ export const TextCorrectionManager = GObject.registerClass({
     }
 
     /**
+     * Configured terminal application IDs / WM_CLASS tokens for Ctrl+Shift+V/C.
+     *
+     * @returns {string[]}
+     */
+    getTerminalApps() {
+        try {
+            if (this._settings?.settings_schema?.has_key?.('convert-terminal-apps'))
+                return this._settings.get_strv('convert-terminal-apps');
+        } catch {
+            // Fallback to defaults
+        }
+        return [...DEFAULT_TERMINAL_APPS];
+    }
+
+    _isTerminalWindow() {
+        return isTerminalWindow(this._getFocusWindow(), this.getTerminalApps());
+    }
+
+    /**
+     * Whether converting selected text is enabled when the typing buffer is empty.
+     *
+     * @returns {boolean}
+     */
+    get selectionConversionEnabled() {
+        try {
+            if (this._settings?.settings_schema?.has_key?.('convert-selection-enabled'))
+                return this._settings.get_boolean('convert-selection-enabled');
+        } catch {
+            return false;
+        }
+        return false;
+    }
+
+    /**
      * Clear the in-memory keystroke buffer.
      */
     clearBuffer() {
@@ -502,7 +610,7 @@ export const TextCorrectionManager = GObject.registerClass({
      *
      * @private
      */
-    _emitShortcut(virtualDevice, keycode) {
+    _emitShortcut(virtualDevice, keycode, withShift = false) {
         if (this._destroyed || !virtualDevice?.notify_key)
             return;
 
@@ -513,10 +621,18 @@ export const TextCorrectionManager = GObject.registerClass({
 
         virtualDevice.notify_key(t, EVDEV_LEFTCTRL, pressedState);
         t += step;
+        if (withShift) {
+            virtualDevice.notify_key(t, EVDEV_LEFTSHIFT, pressedState);
+            t += step;
+        }
         virtualDevice.notify_key(t, keycode, pressedState);
         t += step;
         virtualDevice.notify_key(t, keycode, releasedState);
         t += step;
+        if (withShift) {
+            virtualDevice.notify_key(t, EVDEV_LEFTSHIFT, releasedState);
+            t += step;
+        }
         virtualDevice.notify_key(t, EVDEV_LEFTCTRL, releasedState);
     }
 
@@ -591,7 +707,7 @@ export const TextCorrectionManager = GObject.registerClass({
      *
      * @private
      */
-    _injectReplacement(clipboard, virtualDevice, charCount, converted, previousText, opId = this._operationId) {
+    _injectReplacement(clipboard, virtualDevice, charCount, converted, previousText, useTerminalPaste = false, opId = this._operationId) {
         if (this._destroyed || opId !== this._operationId || !virtualDevice?.notify_key)
             return;
 
@@ -611,7 +727,7 @@ export const TextCorrectionManager = GObject.registerClass({
 
             clipboard.set_text(clipboardType, converted);
 
-            // Small delay to ensure clipboard sync before Ctrl+V
+            // Small delay to ensure clipboard sync before Ctrl+V / Ctrl+Shift+V
             this._clearPasteTimers();
             this._pasteTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 20, () => {
                 this._pasteTimeoutId = 0;
@@ -620,7 +736,7 @@ export const TextCorrectionManager = GObject.registerClass({
 
                 const dev = this._virtualDevice ?? virtualDevice;
                 if (dev?.notify_key)
-                    this._emitShortcut(dev, EVDEV_V);
+                    this._emitShortcut(dev, EVDEV_V, useTerminalPaste);
 
                 this._scheduleClipboardRestore(clipboard, previousText, opId);
                 return GLib.SOURCE_REMOVE;
@@ -628,6 +744,126 @@ export const TextCorrectionManager = GObject.registerClass({
         } catch (e) {
             Log.warn('TextCorrectionManager: clipboard injection error:', e.message);
         }
+    }
+
+    /**
+     * Convert either the typing buffer (if non-empty) or selected text (if enabled).
+     *
+     * @returns {boolean} True if conversion was triggered, false otherwise
+     */
+    convert() {
+        if (this._buffer.length > 0)
+            return this.convertLastWord();
+
+        if (this.selectionConversionEnabled)
+            return this.convertSelection();
+
+        Log.debug('convert: buffer is empty and selection conversion is disabled');
+        return false;
+    }
+
+    /**
+     * Convert currently selected text by copying via Ctrl+C (or Ctrl+Shift+C in terminals),
+     * translating layout, pasting back, and restoring prior clipboard text.
+     *
+     * @returns {boolean} True if selection conversion workflow started, false otherwise
+     */
+    convertSelection() {
+        if (this._destroyed)
+            return false;
+
+        if (this._isPasswordOrSensitiveWindow()) {
+            this.clearBuffer();
+            Log.debug('convertSelection: blocked in sensitive window');
+            return false;
+        }
+
+        if (!this._inputSourceService?.isAvailable) {
+            Log.warn('convertSelection: inputSourceService is unavailable');
+            return false;
+        }
+
+        const sources = this._inputSourceService.getSources();
+        if (sources.length < 2) {
+            Log.debug('convertSelection: fewer than 2 input sources configured');
+            return false;
+        }
+
+        const virtualDevice = this._virtualDevice ?? this._virtualDeviceOverride;
+        const clipboard = this._clipboardOverride ?? St?.Clipboard?.get_default?.() ?? null;
+        if (!virtualDevice?.notify_key || !clipboard) {
+            Log.debug('convertSelection: virtualDevice or clipboard unavailable');
+            return false;
+        }
+
+        const useTerminalShortcut = this._isTerminalWindow();
+        const clipboardType = St?.ClipboardType?.CLIPBOARD ?? 1;
+
+        this._clearPasteTimers();
+        const opId = ++this._operationId;
+
+        this._readClipboardText(clipboard, opId, previousText => {
+            if (this._destroyed || opId !== this._operationId)
+                return;
+
+            try {
+                clipboard.set_text(clipboardType, '');
+                this._emitShortcut(virtualDevice, EVDEV_C, useTerminalShortcut);
+            } catch (e) {
+                Log.warn('convertSelection: clipboard copy error:', e.message);
+                return;
+            }
+
+            this._copyTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+                this._copyTimeoutId = 0;
+                if (this._destroyed || opId !== this._operationId)
+                    return GLib.SOURCE_REMOVE;
+
+                this._readClipboardText(clipboard, opId, selectedText => {
+                    if (this._destroyed || opId !== this._operationId)
+                        return;
+
+                    if (typeof selectedText !== 'string' || selectedText.trim().length === 0 ||
+                        selectedText.length > 4096) {
+                        if (typeof previousText === 'string' && previousText.length > 0) {
+                            try {
+                                clipboard.set_text(clipboardType, previousText);
+                            } catch {
+                                // Ignore restore failure
+                            }
+                        }
+                        Log.debug('convertSelection: no convertible selection copied');
+                        return;
+                    }
+
+                    const currentIndex = this._inputSourceService.getCurrentIndex();
+                    const currentPos = sources.findIndex(s => s.index === currentIndex);
+                    const fromPos = currentPos >= 0 ? currentPos : 0;
+                    const currentSource = this._inputSourceService.getCurrentSource() ?? sources[fromPos];
+
+                    const pair = this._resolveConversionPair(selectedText, sources, fromPos, currentSource);
+                    if (!pair) {
+                        if (typeof previousText === 'string' && previousText.length > 0) {
+                            try {
+                                clipboard.set_text(clipboardType, previousText);
+                            } catch {
+                                // Ignore restore failure
+                            }
+                        }
+                        Log.debug('convertSelection: converted text identical to source');
+                        return;
+                    }
+
+                    Log.debug(`convertSelection: converting selection length ${selectedText.length} from ${pair.fromLayout} to ${pair.targetSource.id} (terminal=${useTerminalShortcut})`);
+                    this._injectReplacement(clipboard, virtualDevice, 0, pair.converted, previousText, useTerminalShortcut, opId);
+                    this._inputSourceService.activate(pair.targetSource.index, true);
+                });
+
+                return GLib.SOURCE_REMOVE;
+            });
+        });
+
+        return true;
     }
 
     /**
@@ -680,10 +916,11 @@ export const TextCorrectionManager = GObject.registerClass({
 
         const {fromLayout, targetSource, converted} = pair;
         const toLayout = targetSource.id;
+        const useTerminalPaste = this._isTerminalWindow();
 
-        Log.debug(`convertLastWord: converting word length ${word.length} from ${fromLayout} to ${toLayout}`);
+        Log.debug(`convertLastWord: converting word length ${word.length} from ${fromLayout} to ${toLayout} (terminal=${useTerminalPaste})`);
 
-        // 1 & 2. Erase word and insert converted text via Clipboard + Ctrl+V, preserving prior clipboard text
+        // 1 & 2. Erase word and insert converted text via Clipboard + Ctrl+V (or Ctrl+Shift+V), preserving prior clipboard text
         const virtualDevice = this._virtualDevice ?? this._virtualDeviceOverride;
         const clipboard = this._clipboardOverride ?? St?.Clipboard?.get_default?.() ?? null;
 
@@ -691,7 +928,7 @@ export const TextCorrectionManager = GObject.registerClass({
             this._clearPasteTimers();
             const opId = ++this._operationId;
             this._readClipboardText(clipboard, opId, previousText => {
-                this._injectReplacement(clipboard, virtualDevice, word.length, converted, previousText, opId);
+                this._injectReplacement(clipboard, virtualDevice, word.length, converted, previousText, useTerminalPaste, opId);
             });
         }
 
