@@ -73,6 +73,12 @@
       <description>Array of application IDs or WM_CLASS values that should be ignored by the memory manager.</description>
     </key>
 
+    <key name="app-default-layouts" type="s">
+      <default>"{}"</default>
+      <summary>Per-application starting input layouts</summary>
+      <description>JSON-encoded dictionary mapping application IDs to forced initial input source IDs (e.g. {"org.gnome.Console": "us"}).</description>
+    </key>
+
     <!-- === Экранное OSD-уведомление === -->
     <key name="show-osd" type="b">
       <default>true</default>

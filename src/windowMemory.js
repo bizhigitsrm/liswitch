@@ -182,6 +182,138 @@ export function getWindowKey(window) {
 }
 
 /**
+ * Normalize an application ID by trimming whitespace and stripping a trailing ".desktop" suffix.
+ *
+ * @param {string|null|undefined} appId
+ * @returns {string}
+ */
+export function normalizeAppId(appId) {
+    if (typeof appId !== 'string')
+        return '';
+    return appId.trim().replace(/\.desktop$/i, '');
+}
+
+/**
+ * Parse a JSON-encoded app-default-layouts dictionary ({[appId]: sourceId}).
+ *
+ * @param {string|null|undefined} raw
+ * @returns {Record<string, string>}
+ */
+export function parseAppDefaultLayouts(raw) {
+    if (typeof raw !== 'string' || !raw.trim())
+        return {};
+
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+            return {};
+
+        const result = {};
+        for (const [rawKey, rawVal] of Object.entries(parsed)) {
+            const key = normalizeAppId(rawKey);
+            const val = typeof rawVal === 'string' ? rawVal.trim() : '';
+            if (key.length > 0 && val.length > 0)
+                result[key] = val;
+        }
+        return result;
+    } catch {
+        return {};
+    }
+}
+
+/**
+ * Serialize an app-default-layouts dictionary into a normalized JSON string.
+ *
+ * @param {Record<string, string>|null|undefined} map
+ * @returns {string}
+ */
+export function serializeAppDefaultLayouts(map) {
+    if (!map || typeof map !== 'object' || Array.isArray(map))
+        return '{}';
+
+    const clean = {};
+    for (const [rawKey, rawVal] of Object.entries(map)) {
+        const key = normalizeAppId(rawKey);
+        const val = typeof rawVal === 'string' ? rawVal.trim() : '';
+        if (key.length > 0 && val.length > 0)
+            clean[key] = val;
+    }
+    return JSON.stringify(clean);
+}
+
+/**
+ * Collect candidate application identifiers for a window in priority order.
+ *
+ * @param {Meta.Window|object} window
+ * @returns {string[]}
+ */
+function getWindowIdentifiers(window) {
+    if (!window)
+        return [];
+
+    const identifiers = [];
+    const getters = [
+        'get_sandboxed_app_id',
+        'get_gtk_application_id',
+        'get_wm_class',
+        'get_wm_class_instance',
+    ];
+
+    for (const method of getters) {
+        if (typeof window[method] === 'function') {
+            const val = normalizeAppId(window[method]());
+            if (val && !identifiers.includes(val))
+                identifiers.push(val);
+        }
+    }
+
+    return identifiers;
+}
+
+/**
+ * Resolve forced initial input source ID for a window from app-default-layouts.
+ * Checks exact matches first across window identifiers, then case-insensitive matches.
+ *
+ * @param {Meta.Window|object} window
+ * @param {Record<string, string>} appDefaultLayouts
+ * @returns {string|null}
+ */
+export function resolveAppDefaultLayout(window, appDefaultLayouts) {
+    if (!window || !appDefaultLayouts || typeof appDefaultLayouts !== 'object')
+        return null;
+
+    const identifiers = getWindowIdentifiers(window);
+    if (identifiers.length === 0)
+        return null;
+
+    // 1. Exact match in identifier priority order
+    for (const id of identifiers) {
+        if (Object.prototype.hasOwnProperty.call(appDefaultLayouts, id)) {
+            const sourceId = appDefaultLayouts[id];
+            if (typeof sourceId === 'string' && sourceId.trim().length > 0)
+                return sourceId.trim();
+        }
+    }
+
+    // 2. Case-insensitive fallback (also strips optional .desktop suffix from keys)
+    const lowerMap = new Map();
+    for (const [rawKey, rawVal] of Object.entries(appDefaultLayouts)) {
+        const normKey = normalizeAppId(rawKey).toLowerCase();
+        const val = typeof rawVal === 'string' ? rawVal.trim() : '';
+        if (normKey && val && !lowerMap.has(normKey))
+            lowerMap.set(normKey, val);
+    }
+
+    for (const id of identifiers) {
+        const match = lowerMap.get(id.toLowerCase());
+        if (match)
+            return match;
+    }
+
+    return null;
+}
+
+/**
  * Check whether a window belongs to an application excluded from layout memory.
  *
  * @param {Meta.Window|object} window
@@ -192,33 +324,11 @@ export function isWindowExcluded(window, excludedList) {
     if (!window || !Array.isArray(excludedList) || excludedList.length === 0)
         return false;
 
-    const identifiers = [];
+    const identifiers = getWindowIdentifiers(window).map(id => id.toLowerCase());
+    if (identifiers.length === 0)
+        return false;
 
-    if (typeof window.get_sandboxed_app_id === 'function') {
-        const id = window.get_sandboxed_app_id();
-        if (id)
-            identifiers.push(id.toLowerCase());
-    }
-
-    if (typeof window.get_gtk_application_id === 'function') {
-        const id = window.get_gtk_application_id();
-        if (id)
-            identifiers.push(id.toLowerCase());
-    }
-
-    if (typeof window.get_wm_class === 'function') {
-        const id = window.get_wm_class();
-        if (id)
-            identifiers.push(id.toLowerCase());
-    }
-
-    if (typeof window.get_wm_class_instance === 'function') {
-        const id = window.get_wm_class_instance();
-        if (id)
-            identifiers.push(id.toLowerCase());
-    }
-
-    const set = new Set(excludedList.map(s => String(s).trim().toLowerCase()).filter(s => s.length > 0));
+    const set = new Set(excludedList.map(s => normalizeAppId(String(s)).toLowerCase()).filter(s => s.length > 0));
     return identifiers.some(id => set.has(id));
 }
 
@@ -338,6 +448,12 @@ export class WindowMemory {
             });
             this._settingsSignals.push(modeId, appsId, defaultId);
 
+            if (this._settings.settings_schema?.has_key?.('app-default-layouts')) {
+                const appDefaultsId = this._settings.connect('changed::app-default-layouts', () => {
+                    Log.debug('WindowMemory: app-default-layouts setting changed');
+                });
+                this._settingsSignals.push(appDefaultsId);
+            }
         }
 
         // 6. Restore in-session runtime snapshot (survives screen lock / disable->enable)
@@ -359,8 +475,9 @@ export class WindowMemory {
                 const hasSaved = mode === 'per-app'
                     ? Boolean(getAppKey(initialWindow) && this._appMemory.has(getAppKey(initialWindow)))
                     : Boolean(getWindowKey(initialWindow) && this._windowMemory.has(getWindowKey(initialWindow)));
+                const hasForcedDefault = Boolean(resolveAppDefaultLayout(initialWindow, this.appDefaultLayouts));
 
-                if (hasSaved && !this._systemPerWindowActive)
+                if ((hasSaved || hasForcedDefault) && !this._systemPerWindowActive)
                     this._restoreWindowLayout(initialWindow, mode);
                 else
                     this._seedInitialWindow(initialWindow, mode);
@@ -609,6 +726,21 @@ export class WindowMemory {
     }
 
     /**
+     * Map of application IDs to forced initial input source IDs ({[appId]: sourceId}).
+     *
+     * @returns {Record<string, string>}
+     */
+    get appDefaultLayouts() {
+        try {
+            if (this._settings?.settings_schema?.has_key?.('app-default-layouts') === false)
+                return {};
+            return parseAppDefaultLayouts(this._settings?.get_string('app-default-layouts'));
+        } catch {
+            return {};
+        }
+    }
+
+    /**
      * Whether the GNOME Shell system per-window memory option is active.
      *
      * @returns {boolean}
@@ -844,6 +976,34 @@ export class WindowMemory {
             }
         } else {
             // First time this window / app received focus
+            const forcedSourceId = resolveAppDefaultLayout(window, this.appDefaultLayouts);
+            const forcedSource = forcedSourceId
+                ? sources.find(s => s.id === forcedSourceId)
+                : null;
+
+            if (forcedSource) {
+                if (forcedSource.index !== currentIndex) {
+                    Log.debug(`WindowMemory: applying per-app starting layout "${forcedSource.id}" (index ${forcedSource.index})`);
+                    this._isRestoring = true;
+                    try {
+                        this._inputSourceService.activate(forcedSource.index, false);
+                    } finally {
+                        this._isRestoring = false;
+                    }
+                } else {
+                    Log.debug(`WindowMemory: per-app starting layout "${forcedSource.id}" already active`);
+                }
+                this._saveWindowLayout(window, mode);
+                return;
+            }
+
+            if (forcedSourceId) {
+                Log.debug(
+                    `WindowMemory: configured starting layout "${forcedSourceId}" not found in active sources; ` +
+                    'falling back to default-layout-mode'
+                );
+            }
+
             const defaultMode = this.defaultLayoutMode;
             if (defaultMode === 'first') {
                 const firstSource = sources[0];

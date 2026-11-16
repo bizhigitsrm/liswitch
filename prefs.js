@@ -22,6 +22,169 @@ import {
     applyXkbGroupToggleSetting,
     getSystemInputSourceSwitchInfo,
 } from './src/hotkeys.js';
+import {
+    normalizeAppId,
+    parseAppDefaultLayouts,
+    serializeAppDefaultLayouts,
+} from './src/windowMemory.js';
+
+let _GnomeDesktop = null;
+try {
+    const mod = await import('gi://GnomeDesktop?version=4.0');
+    _GnomeDesktop = mod.default;
+} catch {
+    _GnomeDesktop = null;
+}
+
+export const COMMON_APP_SUGGESTIONS = [
+    {appId: 'org.gnome.Console', displayName: 'Console', wmClass: 'kgx', icon: null},
+    {appId: 'org.gnome.Terminal', displayName: 'Terminal', wmClass: 'gnome-terminal-server', icon: null},
+    {appId: 'org.gnome.TextEditor', displayName: 'Text Editor', wmClass: 'org.gnome.TextEditor', icon: null},
+    {appId: 'org.gnome.Nautilus', displayName: 'Files', wmClass: 'org.gnome.Nautilus', icon: null},
+    {appId: 'org.mozilla.firefox', displayName: 'Firefox', wmClass: 'firefox', icon: null},
+    {appId: 'code', displayName: 'Visual Studio Code', wmClass: 'Code', icon: null},
+];
+
+/**
+ * Collect visible installed desktop applications via Gio.AppInfo.get_all().
+ * Falls back to COMMON_APP_SUGGESTIONS when no desktop entries are available.
+ *
+ * @param {Array<Gio.AppInfo|object>|null} [appInfosOverride=null]
+ * @returns {Array<{appId: string, displayName: string, wmClass: string|null, icon: Gio.Icon|null}>}
+ */
+export function getInstalledApplications(appInfosOverride = null) {
+    let rawList = [];
+    try {
+        rawList = Array.isArray(appInfosOverride) ? appInfosOverride : Gio.AppInfo.get_all();
+    } catch {
+        rawList = [];
+    }
+
+    const dedup = new Map();
+    for (const info of rawList) {
+        if (!info)
+            continue;
+        try {
+            if (typeof info.should_show === 'function' && !info.should_show())
+                continue;
+            const rawId = typeof info.get_id === 'function' ? info.get_id() : '';
+            const appId = normalizeAppId(rawId);
+            if (!appId)
+                continue;
+
+            const key = appId.toLowerCase();
+            if (dedup.has(key))
+                continue;
+
+            const displayName = (typeof info.get_display_name === 'function' && info.get_display_name()) ||
+                (typeof info.get_name === 'function' && info.get_name()) ||
+                appId;
+            const wmClass = (typeof info.get_startup_wm_class === 'function' && info.get_startup_wm_class()) || null;
+            const icon = (typeof info.get_icon === 'function' && info.get_icon()) || null;
+
+            dedup.set(key, {
+                appId,
+                displayName: String(displayName),
+                wmClass: wmClass ? String(wmClass) : null,
+                icon,
+            });
+        } catch {
+            // Skip malformed desktop entry
+        }
+    }
+
+    if (dedup.size === 0)
+        return COMMON_APP_SUGGESTIONS.map(item => ({...item}));
+
+    return Array.from(dedup.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+/**
+ * Build a case-insensitive lookup map from appId (and wmClass) to app metadata.
+ *
+ * @param {Array<{appId: string, displayName: string, wmClass: string|null, icon: Gio.Icon|null}>} apps
+ * @returns {Map<string, {appId: string, displayName: string, wmClass: string|null, icon: Gio.Icon|null}>}
+ */
+export function buildAppLookupMap(apps) {
+    const map = new Map();
+    if (!Array.isArray(apps))
+        return map;
+
+    for (const app of apps) {
+        if (!app?.appId)
+            continue;
+        map.set(app.appId.toLowerCase(), app);
+        if (app.wmClass) {
+            const wmKey = app.wmClass.toLowerCase();
+            if (!map.has(wmKey))
+                map.set(wmKey, app);
+        }
+    }
+    return map;
+}
+
+/**
+ * Read configured GNOME input sources from org.gnome.desktop.input-sources.
+ *
+ * @param {Gio.Settings|object|null} desktopSettings
+ * @param {object|null} [xkbInfoOverride=undefined]
+ * @returns {Array<{id: string, type: string, shortName: string, displayName: string, label: string}>}
+ */
+export function getConfiguredInputSources(desktopSettings, xkbInfoOverride = undefined) {
+    if (!desktopSettings || typeof desktopSettings.get_value !== 'function')
+        return [];
+
+    let xkbInfo = xkbInfoOverride;
+    if (xkbInfo === undefined) {
+        try {
+            xkbInfo = _GnomeDesktop?.XkbInfo ? new _GnomeDesktop.XkbInfo() : null;
+        } catch {
+            xkbInfo = null;
+        }
+    }
+
+    try {
+        const gvar = desktopSettings.get_value('sources');
+        const unpacked = gvar?.deepUnpack ? gvar.deepUnpack() : gvar?.deep_unpack?.();
+        if (!Array.isArray(unpacked))
+            return [];
+
+        const sources = [];
+        const seen = new Set();
+        for (const item of unpacked) {
+            if (!Array.isArray(item) || item.length < 2)
+                continue;
+            const type = String(item[0] ?? 'xkb');
+            const id = String(item[1] ?? '').trim();
+            if (!id || seen.has(id))
+                continue;
+            seen.add(id);
+
+            let displayName = id;
+            let shortName = id.slice(0, 2).toLowerCase();
+
+            if (type === 'xkb' && xkbInfo && typeof xkbInfo.get_layout_info === 'function') {
+                try {
+                    const info = xkbInfo.get_layout_info(id);
+                    if (Array.isArray(info) && info[0]) {
+                        if (info[1])
+                            displayName = String(info[1]);
+                        if (info[2])
+                            shortName = String(info[2]);
+                    }
+                } catch {
+                    // Fallback to id
+                }
+            }
+
+            const label = displayName !== id ? `${displayName} (${id})` : id;
+            sources.push({id, type, shortName, displayName, label});
+        }
+        return sources;
+    } catch {
+        return [];
+    }
+}
 
 function _(str) {
     try {
@@ -1221,6 +1384,368 @@ class LiswitchMemoryPage extends Adw.PreferencesPage {
                 defaultRow.selected = i;
         });
 
+        this._installedApps = getInstalledApplications();
+        this._appLookup = buildAppLookupMap(this._installedApps);
+        this._activePickerDialog = null;
+        this._tracker.addCleanup(() => {
+            if (this._activePickerDialog) {
+                try {
+                    this._activePickerDialog.close();
+                } catch {
+                    // Ignore
+                }
+                this._activePickerDialog = null;
+            }
+        });
+
+        this._buildPerAppDefaultsGroup();
+        this._buildExcludedAppsGroup();
+    }
+
+    _createAppIcon(appInfo, pixelSize = 24) {
+        if (appInfo?.icon) {
+            return new Gtk.Image({
+                gicon: appInfo.icon,
+                pixel_size: pixelSize,
+                valign: Gtk.Align.CENTER,
+            });
+        }
+        return new Gtk.Image({
+            icon_name: 'application-x-executable-symbolic',
+            pixel_size: pixelSize,
+            valign: Gtk.Align.CENTER,
+        });
+    }
+
+    _openAppPickerDialog({title, configuredIds = new Set(), onSelect}) {
+        if (this._activePickerDialog) {
+            try {
+                this._activePickerDialog.close();
+            } catch {
+                // Ignore
+            }
+            this._activePickerDialog = null;
+        }
+
+        // Refresh installed apps list on open in case user installed new apps
+        this._installedApps = getInstalledApplications();
+        this._appLookup = buildAppLookupMap(this._installedApps);
+
+        const dialog = new Adw.Dialog({
+            title,
+            content_width: 440,
+            content_height: 520,
+        });
+        this._activePickerDialog = dialog;
+
+        const toolbarView = new Adw.ToolbarView();
+        toolbarView.add_top_bar(new Adw.HeaderBar());
+
+        const contentBox = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 12,
+            margin_top: 12,
+            margin_bottom: 12,
+            margin_start: 12,
+            margin_end: 12,
+        });
+
+        const searchEntry = new Gtk.SearchEntry({
+            placeholder_text: _('Search applications by name or ID…'),
+            hexpand: true,
+        });
+        contentBox.append(searchEntry);
+
+        const listBox = new Gtk.ListBox({
+            selection_mode: Gtk.SelectionMode.NONE,
+            css_classes: ['boxed-list'],
+        });
+        listBox.set_placeholder(new Gtk.Label({
+            label: _('No matching applications found'),
+            css_classes: ['dim-label'],
+            margin_top: 24,
+            margin_bottom: 24,
+        }));
+
+        const rowMetadata = new Map();
+        for (const app of this._installedApps) {
+            const subtitle = app.wmClass && app.wmClass.toLowerCase() !== app.appId.toLowerCase()
+                ? `${app.appId} (${app.wmClass})`
+                : app.appId;
+
+            const row = new Adw.ActionRow({
+                title: app.displayName,
+                subtitle,
+                activatable: true,
+            });
+            row.add_prefix(this._createAppIcon(app, 32));
+
+            if (configuredIds.has(app.appId.toLowerCase())) {
+                row.add_suffix(new Gtk.Label({
+                    label: _('Added'),
+                    css_classes: ['dim-label'],
+                    valign: Gtk.Align.CENTER,
+                }));
+            }
+
+            row.connect('activated', () => {
+                if (this._activePickerDialog === dialog)
+                    this._activePickerDialog = null;
+                dialog.close();
+                onSelect(app);
+            });
+
+            rowMetadata.set(row, `${app.displayName} ${app.appId} ${app.wmClass ?? ''}`.toLowerCase());
+            listBox.append(row);
+        }
+
+        listBox.set_filter_func(row => {
+            const query = searchEntry.get_text().trim().toLowerCase();
+            if (!query)
+                return true;
+            const hay = rowMetadata.get(row) ?? '';
+            return hay.includes(query);
+        });
+
+        searchEntry.connect('search-changed', () => {
+            listBox.invalidate_filter();
+        });
+
+        const scrolled = new Gtk.ScrolledWindow({
+            vexpand: true,
+            hscrollbar_policy: Gtk.PolicyType.NEVER,
+            child: listBox,
+        });
+        contentBox.append(scrolled);
+
+        toolbarView.set_content(contentBox);
+        dialog.set_child(toolbarView);
+
+        dialog.connect('closed', () => {
+            if (this._activePickerDialog === dialog)
+                this._activePickerDialog = null;
+        });
+
+        const parent = this.get_root();
+        if (parent)
+            dialog.present(parent);
+    }
+
+    _readAppDefaultLayouts() {
+        try {
+            if (this._settings.settings_schema?.has_key?.('app-default-layouts') === false)
+                return {};
+            return parseAppDefaultLayouts(this._settings.get_string('app-default-layouts'));
+        } catch {
+            return {};
+        }
+    }
+
+    _writeAppDefaultLayouts(map) {
+        if (this._settings.settings_schema?.has_key?.('app-default-layouts') === false)
+            return;
+        this._settings.set_string('app-default-layouts', serializeAppDefaultLayouts(map));
+    }
+
+    _buildPerAppDefaultsGroup() {
+        const perAppGroup = new Adw.PreferencesGroup({
+            title: _('Per-App Starting Layout'),
+            description: _('Force a specific layout when an application is focused for the first time'),
+        });
+        this.add(perAppGroup);
+
+        const appEntryRow = new Adw.EntryRow({
+            title: _('Application ID (e.g. org.gnome.Console)'),
+            show_apply_button: false,
+        });
+        perAppGroup.add(appEntryRow);
+
+        const browseBtn = new Gtk.Button({
+            icon_name: 'view-app-grid-symbolic',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+            tooltip_text: _('Choose from installed applications'),
+        });
+        appEntryRow.add_suffix(browseBtn);
+
+        const layoutRow = new Adw.ComboRow({
+            title: _('Starting Layout'),
+            subtitle: _('Layout activated on first focus of this application'),
+        });
+        perAppGroup.add(layoutRow);
+
+        const addRuleBtn = new Gtk.Button({
+            label: _('Add'),
+            valign: Gtk.Align.CENTER,
+            css_classes: ['suggested-action'],
+            tooltip_text: _('Assign starting layout for this application'),
+        });
+        layoutRow.add_suffix(addRuleBtn);
+
+        const rulesExpander = new Adw.ExpanderRow({
+            title: _('Configured Rules'),
+            subtitle: '',
+        });
+        perAppGroup.add(rulesExpander);
+
+        let configuredSources = [];
+        const ruleRows = [];
+
+        const updateAddSensitivity = () => {
+            const hasText = normalizeAppId(appEntryRow.text).length > 0;
+            addRuleBtn.sensitive = hasText && configuredSources.length > 0;
+        };
+
+        const refreshRulesList = () => {
+            for (const r of ruleRows) {
+                try {
+                    rulesExpander.remove(r);
+                } catch {
+                    // Ignore
+                }
+            }
+            ruleRows.length = 0;
+
+            const map = this._readAppDefaultLayouts();
+            const entries = Object.entries(map);
+            if (entries.length === 0) {
+                rulesExpander.subtitle = _('No per-app starting layouts configured');
+                rulesExpander.expanded = false;
+                return;
+            }
+
+            rulesExpander.subtitle = _('%d application rule(s) configured').format(entries.length);
+            rulesExpander.expanded = true;
+
+            entries.sort(([a], [b]) => {
+                const nameA = this._appLookup.get(a.toLowerCase())?.displayName ?? a;
+                const nameB = this._appLookup.get(b.toLowerCase())?.displayName ?? b;
+                return nameA.localeCompare(nameB);
+            });
+
+            for (const [appId, sourceId] of entries) {
+                const appInfo = this._appLookup.get(appId.toLowerCase()) ?? null;
+                const sourceIdx = configuredSources.findIndex(s => s.id === sourceId);
+                const isMissingSource = sourceIdx < 0;
+
+                const row = new Adw.ActionRow({
+                    title: appInfo ? appInfo.displayName : appId,
+                    subtitle: isMissingSource
+                        ? `⚠️ ${_('Layout "%s" is not configured in system').format(sourceId)}`
+                        : (appInfo ? appId : _('Custom application ID')),
+                });
+                row.add_prefix(this._createAppIcon(appInfo, 24));
+
+                const optionLabels = configuredSources.map(s => s.label);
+                const optionIds = configuredSources.map(s => s.id);
+                if (isMissingSource) {
+                    optionLabels.push(`${sourceId} (${_('Missing')})`);
+                    optionIds.push(sourceId);
+                }
+
+                if (optionLabels.length > 0) {
+                    const dropDown = Gtk.DropDown.new_from_strings(optionLabels);
+                    dropDown.valign = Gtk.Align.CENTER;
+                    dropDown.selected = isMissingSource ? optionIds.length - 1 : sourceIdx;
+                    dropDown.connect('notify::selected', () => {
+                        const selIdx = dropDown.selected;
+                        const nextSourceId = optionIds[selIdx];
+                        if (!nextSourceId || nextSourceId === sourceId)
+                            return;
+                        const updated = this._readAppDefaultLayouts();
+                        updated[appId] = nextSourceId;
+                        this._writeAppDefaultLayouts(updated);
+                    });
+                    row.add_suffix(dropDown);
+                }
+
+                const delBtn = new Gtk.Button({
+                    icon_name: 'user-trash-symbolic',
+                    valign: Gtk.Align.CENTER,
+                    css_classes: ['flat'],
+                    tooltip_text: _('Remove starting layout rule'),
+                });
+                delBtn.connect('clicked', () => {
+                    const updated = this._readAppDefaultLayouts();
+                    delete updated[appId];
+                    this._writeAppDefaultLayouts(updated);
+                    refreshRulesList();
+                });
+                row.add_suffix(delBtn);
+
+                rulesExpander.add_row(row);
+                ruleRows.push(row);
+            }
+        };
+
+        const syncSourcesUi = () => {
+            configuredSources = getConfiguredInputSources(this._desktopSettings);
+            const model = new Gtk.StringList();
+
+            if (configuredSources.length === 0) {
+                model.append(_('No system layouts configured'));
+                layoutRow.model = model;
+                layoutRow.selected = 0;
+                layoutRow.sensitive = false;
+            } else {
+                for (const src of configuredSources)
+                    model.append(src.label);
+                layoutRow.model = model;
+                layoutRow.selected = 0;
+                layoutRow.sensitive = true;
+            }
+
+            updateAddSensitivity();
+            refreshRulesList();
+        };
+
+        const submitRule = () => {
+            const appId = normalizeAppId(appEntryRow.text);
+            if (!appId || configuredSources.length === 0)
+                return;
+
+            const selectedSource = configuredSources[layoutRow.selected] ?? configuredSources[0];
+            if (!selectedSource)
+                return;
+
+            const updated = this._readAppDefaultLayouts();
+            for (const existingKey of Object.keys(updated)) {
+                if (existingKey.toLowerCase() === appId.toLowerCase())
+                    delete updated[existingKey];
+            }
+            updated[appId] = selectedSource.id;
+            this._writeAppDefaultLayouts(updated);
+            appEntryRow.text = '';
+            updateAddSensitivity();
+            refreshRulesList();
+        };
+
+        browseBtn.connect('clicked', () => {
+            const currentMap = this._readAppDefaultLayouts();
+            const configuredIds = new Set(Object.keys(currentMap).map(k => k.toLowerCase()));
+            this._openAppPickerDialog({
+                title: _('Select Application'),
+                configuredIds,
+                onSelect: app => {
+                    appEntryRow.text = app.appId;
+                    updateAddSensitivity();
+                },
+            });
+        });
+
+        appEntryRow.connect('notify::text', updateAddSensitivity);
+        appEntryRow.connect('entry-activated', submitRule);
+        addRuleBtn.connect('clicked', submitRule);
+
+        if (this._settings.settings_schema?.has_key?.('app-default-layouts') !== false)
+            this._tracker.connect(this._settings, 'changed::app-default-layouts', refreshRulesList);
+        if (this._desktopSettings)
+            this._tracker.connect(this._desktopSettings, 'changed::sources', syncSourcesUi);
+
+        syncSourcesUi();
+    }
+
+    _buildExcludedAppsGroup() {
         // --- Excluded Applications Group ---
         const excludedGroup = new Adw.PreferencesGroup({
             title: _('Excluded Applications'),
@@ -1233,6 +1758,14 @@ class LiswitchMemoryPage extends Adw.PreferencesPage {
             show_apply_button: true,
         });
         excludedGroup.add(addEntryRow);
+
+        const browseBtn = new Gtk.Button({
+            icon_name: 'view-app-grid-symbolic',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+            tooltip_text: _('Choose from installed applications'),
+        });
+        addEntryRow.add_suffix(browseBtn);
 
         const excludedExpander = new Adw.ExpanderRow({
             title: _('Excluded List'),
@@ -1261,9 +1794,12 @@ class LiswitchMemoryPage extends Adw.PreferencesPage {
             excludedExpander.subtitle = _('%d application(s) excluded').format(list.length);
 
             for (const app of list) {
+                const appInfo = this._appLookup.get(normalizeAppId(app).toLowerCase()) ?? null;
                 const row = new Adw.ActionRow({
-                    title: app,
+                    title: appInfo ? appInfo.displayName : app,
+                    subtitle: appInfo ? app : '',
                 });
+                row.add_prefix(this._createAppIcon(appInfo, 24));
 
                 const delBtn = new Gtk.Button({
                     icon_name: 'user-trash-symbolic',
@@ -1284,18 +1820,37 @@ class LiswitchMemoryPage extends Adw.PreferencesPage {
             }
         };
 
-        addEntryRow.connect('apply', () => {
-            const val = addEntryRow.text.trim();
+        const addExcludedApp = rawAppId => {
+            const val = normalizeAppId(rawAppId);
             if (!val)
                 return;
 
             const list = this._settings.get_strv('memory-excluded-apps');
-            if (!list.includes(val)) {
+            const alreadyExists = list.some(
+                item => normalizeAppId(item).toLowerCase() === val.toLowerCase()
+            );
+            if (!alreadyExists) {
                 list.push(val);
                 this._settings.set_strv('memory-excluded-apps', list);
             }
-            addEntryRow.text = '';
             refreshExcludedList();
+        };
+
+        browseBtn.connect('clicked', () => {
+            const list = this._settings.get_strv('memory-excluded-apps');
+            const configuredIds = new Set(list.map(item => normalizeAppId(item).toLowerCase()));
+            this._openAppPickerDialog({
+                title: _('Exclude Application'),
+                configuredIds,
+                onSelect: app => {
+                    addExcludedApp(app.appId);
+                },
+            });
+        });
+
+        addEntryRow.connect('apply', () => {
+            addExcludedApp(addEntryRow.text);
+            addEntryRow.text = '';
         });
 
         this._tracker.connect(this._settings, 'changed::memory-excluded-apps', refreshExcludedList);
@@ -1313,6 +1868,10 @@ class LiswitchMemoryPage extends Adw.PreferencesPage {
             }
         }
         this._tracker.dispose();
+        this._desktopSettings = null;
+        this._installedApps = [];
+        this._appLookup = null;
+        this._activePickerDialog = null;
     }
 }
 

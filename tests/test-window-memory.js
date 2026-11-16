@@ -8,6 +8,10 @@ import {
     getAppKey,
     getWindowKey,
     isWindowExcluded,
+    normalizeAppId,
+    parseAppDefaultLayouts,
+    serializeAppDefaultLayouts,
+    resolveAppDefaultLayout,
     MAX_MEMORY_ENTRIES,
     SNAPSHOT_TTL_MS,
 } from '../src/windowMemory.js';
@@ -15,6 +19,7 @@ import {InputSourceService} from '../src/inputSourceService.js';
 import * as Log from '../src/log.js';
 import {
     assert,
+    assertDeepEqual,
     createMemorySettings,
     MockDisplay,
     MockWindow,
@@ -591,6 +596,191 @@ console.log('Test 12: Snapshot TTL expiration and 500-entry LRU limit...');
         if (GLib.file_test(testSnapshotPath, GLib.FileTest.EXISTS))
             GLib.unlink(testSnapshotPath);
     }
+    console.log('  -> PASS');
+}
+
+// Test 13: App default layout helpers (normalize, parse, serialize, resolve)
+console.log('Test 13: App default layout parsing, serialization, and window resolution...');
+{
+    assert(normalizeAppId(' org.gnome.Console.desktop ') === 'org.gnome.Console', 'Strips whitespace and .desktop');
+    assert(normalizeAppId('code.DESKTOP') === 'code', 'Case-insensitive .desktop strip');
+    assert(normalizeAppId(null) === '', 'Null yields empty string');
+
+    assertDeepEqual(parseAppDefaultLayouts(''), {}, 'Empty string parses to {}');
+    assertDeepEqual(parseAppDefaultLayouts('{not-json'), {}, 'Malformed JSON parses safely to {}');
+    assertDeepEqual(parseAppDefaultLayouts('["us"]'), {}, 'Array JSON parses safely to {}');
+    assertDeepEqual(
+        parseAppDefaultLayouts('{"org.gnome.Console.desktop": "us", "": "ru", "code": " "}'),
+        {'org.gnome.Console': 'us'},
+        'Filters empty keys/values and normalizes .desktop suffix'
+    );
+
+    assert(
+        serializeAppDefaultLayouts({'org.gnome.Console.desktop': ' us ', 'empty': ''}) === '{"org.gnome.Console":"us"}',
+        'Serializes clean dictionary'
+    );
+
+    const winExact = new MockWindow({id: 1, gtkAppId: 'org.gnome.Console', wmClass: 'kgx'});
+    const winCase = new MockWindow({id: 2, wmClass: 'Code'});
+    const winFlatpak = new MockWindow({id: 3, sandboxedAppId: 'org.mozilla.firefox', wmClass: 'firefox'});
+    const rules = {
+        'org.gnome.Console': 'us',
+        'code': 'us',
+        'org.mozilla.firefox': 'ru',
+        'firefox': 'kk',
+    };
+
+    assert(resolveAppDefaultLayout(winExact, rules) === 'us', 'Matches gtk_application_id');
+    assert(resolveAppDefaultLayout(winCase, rules) === 'us', 'Matches wm_class case-insensitively');
+    assert(resolveAppDefaultLayout(winFlatpak, rules) === 'ru', 'sandboxed_app_id takes priority over wm_class');
+    assert(resolveAppDefaultLayout(null, rules) === null, 'Null window returns null');
+    console.log('  -> PASS');
+}
+
+// Test 14: Per-app forced starting layout in per-app mode (first focus vs manual switch)
+console.log('Test 14: Per-app starting layout on first focus in per-app mode...');
+{
+    const sources = [
+        {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'},
+        {index: 1, id: 'ru', shortName: 'ru', displayName: 'Russian'},
+        {index: 2, id: 'kk', shortName: 'kk', displayName: 'Kazakh'},
+    ];
+    const mockManager = new MockInputSourceManager(sources, 1); // Start on RU (1)
+    const inputService = new InputSourceService();
+    inputService.enable({manager: mockManager});
+
+    const settings = new MockSettings({
+        'memory-mode': 'per-app',
+        'default-layout-mode': 'keep',
+        'app-default-layouts': JSON.stringify({
+            'org.gnome.Console': 'us',
+            'org.gnome.TextEditor': 'kk',
+        }),
+    });
+    const desktopSettings = new MockDesktopSettings(false);
+    const display = new MockDisplay();
+
+    const mem = new WindowMemory(settings, inputService, {snapshotPath: null});
+    mem.enable({display, desktopSettings});
+
+    const winConsole = new MockWindow({id: 901, gtkAppId: 'org.gnome.Console'});
+    const winEditor = new MockWindow({id: 902, gtkAppId: 'org.gnome.TextEditor'});
+    const winOther = new MockWindow({id: 903, gtkAppId: 'org.gnome.Nautilus'});
+
+    // 1. First focus on Console (global layout was RU): must silently force US (0)
+    mockManager.activateHistory = [];
+    display.setFocus(winConsole);
+    assert(inputService.getCurrentIndex() === 0, 'Console forced to US (0) on first focus');
+    assert(mockManager.activateHistory.length === 1, 'activate() called once');
+    assert(mockManager.activateHistory[0].interactive === false, 'Forced starting layout is silent');
+    assert(mem.getSavedAppLayout('org.gnome.Console')?.id === 'us', 'Console saved US in app memory');
+
+    // 2. User manually switches Console to RU (1)
+    inputService.activate(1, true);
+    assert(mem.getSavedAppLayout('org.gnome.Console')?.id === 'ru', 'User manual change to RU recorded');
+
+    // 3. First focus on TextEditor: overrides default-layout-mode='keep' and forces KK (2)
+    mockManager.activateHistory = [];
+    display.setFocus(winEditor);
+    assert(inputService.getCurrentIndex() === 2, 'TextEditor forced to KK (2) on first focus');
+    assert(mockManager.activateHistory.length === 1 && mockManager.activateHistory[0].interactive === false, 'Silent activation for TextEditor');
+
+    // 4. Alt+Tab back to Console: restores user's manual choice RU (1), not forced starting layout
+    mockManager.activateHistory = [];
+    display.setFocus(winConsole);
+    assert(inputService.getCurrentIndex() === 1, 'Console restores manual RU instead of overwriting with US');
+    assert(mockManager.activateHistory.length === 1, 'Restored once');
+
+    // 5. Unconfigured app follows default-layout-mode ('keep' -> stays RU)
+    mockManager.activateHistory = [];
+    display.setFocus(winOther);
+    assert(inputService.getCurrentIndex() === 1, 'Unconfigured app keeps current layout (RU)');
+    assert(mockManager.activateHistory.length === 0, 'No activate call for keep mode');
+
+    mem.destroy();
+
+    // 6. Verify per-app rule also overrides default-layout-mode='first'
+    mockManager.setCurrent(1); // RU
+    settings.set_string('default-layout-mode', 'first');
+    const memFirst = new WindowMemory(settings, inputService, {snapshotPath: null});
+    memFirst.enable({display: new MockDisplay(), desktopSettings});
+    const d2 = memFirst._display;
+
+    mockManager.activateHistory = [];
+    d2.setFocus(new MockWindow({id: 904, gtkAppId: 'org.gnome.TextEditor'}));
+    assert(inputService.getCurrentIndex() === 2, 'Per-app rule KK overrides default-layout-mode="first"');
+
+    mockManager.activateHistory = [];
+    d2.setFocus(new MockWindow({id: 905, gtkAppId: 'org.gnome.Nautilus'}));
+    assert(inputService.getCurrentIndex() === 0, 'Unconfigured app falls back to default-layout-mode="first" (US)');
+
+    memFirst.destroy();
+    inputService.destroy();
+    console.log('  -> PASS');
+}
+
+// Test 15: Per-window mode, initial window on enable(), missing source fallback, excluded precedence, real GSettings
+console.log('Test 15: Per-window starting layout, initial window, fallback, and GSettings schema...');
+{
+    const sources = [
+        {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'},
+        {index: 1, id: 'ru', shortName: 'ru', displayName: 'Russian'},
+    ];
+    const mockManager = new MockInputSourceManager(sources, 1); // Active layout: RU (1)
+    const inputService = new InputSourceService();
+    inputService.enable({manager: mockManager});
+
+    const settings = createMemorySettings();
+    settings.set_string('memory-mode', 'per-window');
+    settings.set_string('default-layout-mode', 'keep');
+    settings.set_string('app-default-layouts', JSON.stringify({
+        'org.gnome.Console': 'us',
+        'org.gnome.ExcludedApp': 'us',
+        'org.gnome.MissingLayoutApp': 'fr',
+    }));
+    settings.set_strv('memory-excluded-apps', ['org.gnome.ExcludedApp']);
+
+    const desktopSettings = new MockDesktopSettings(false);
+    const display = new MockDisplay();
+
+    // Pre-focus Console window 1 before enable()
+    const winC1 = new MockWindow({id: 1001, gtkAppId: 'org.gnome.Console'});
+    display.focus_window = winC1;
+
+    const mem = new WindowMemory(settings, inputService, {snapshotPath: null});
+    mem.enable({display, desktopSettings});
+    assert(inputService.getCurrentIndex() === 0, 'Initial focused window on enable() receives forced starting layout US (0)');
+
+    // User switches Console window 1 to RU (1)
+    inputService.activate(1, true);
+    assert(inputService.getCurrentIndex() === 1, 'Console window 1 switched to RU');
+
+    // Open a second Console window -> in per-window mode it must start in US (0)
+    const winC2 = new MockWindow({id: 1002, gtkAppId: 'org.gnome.Console'});
+    mockManager.activateHistory = [];
+    display.setFocus(winC2);
+    assert(inputService.getCurrentIndex() === 0, 'New Console window 2 in per-window mode starts with US (0)');
+
+    // Switch back to Console window 1 -> still remembers RU (1)
+    display.setFocus(winC1);
+    assert(inputService.getCurrentIndex() === 1, 'Console window 1 remembers RU (1)');
+
+    // App with missing configured source ('fr') safely falls back to default-layout-mode ('keep' -> RU)
+    const winMissing = new MockWindow({id: 1003, gtkAppId: 'org.gnome.MissingLayoutApp'});
+    mockManager.activateHistory = [];
+    display.setFocus(winMissing);
+    assert(inputService.getCurrentIndex() === 1, 'Missing configured layout falls back to keep (RU)');
+    assert(mockManager.activateHistory.length === 0, 'No activate call on missing layout fallback to keep');
+
+    // Excluded app takes precedence over app-default-layouts
+    const winExcluded = new MockWindow({id: 1004, gtkAppId: 'org.gnome.ExcludedApp'});
+    mockManager.activateHistory = [];
+    display.setFocus(winExcluded);
+    assert(inputService.getCurrentIndex() === 1, 'Excluded app ignores app-default-layouts and keeps RU');
+    assert(mockManager.activateHistory.length === 0, 'No activate call for excluded app');
+
+    mem.destroy();
+    inputService.destroy();
     console.log('  -> PASS');
 }
 

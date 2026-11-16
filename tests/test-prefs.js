@@ -3,6 +3,7 @@
 
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk?version=4.0';
 import Gdk from 'gi://Gdk?version=4.0';
 
@@ -41,6 +42,10 @@ const {
     findDuplicateAction,
     getDefaultHotkeyTitles,
     createShortcutContext,
+    getInstalledApplications,
+    buildAppLookupMap,
+    getConfiguredInputSources,
+    COMMON_APP_SUGGESTIONS,
 } = await import('../prefs.js');
 const {HOTKEY_KEYS} = await import('../src/hotkeys.js');
 
@@ -234,6 +239,74 @@ function runTests() {
         assertEquals(recorderStopped, 1, 'Cleanup callback executed exactly once');
         assertEquals(settings.listenerCount(), 0, 'All Liswitch settings listeners disconnected on dispose');
         assertEquals(desktopSettings.listenerCount(), 0, 'All desktopSettings listeners disconnected on dispose');
+
+        print('  -> PASS');
+    }
+
+    // Test 6: Installed app discovery, lookup map, and configured input sources helpers
+    print('Test 6: App discovery and input source helpers for LiswitchMemoryPage...');
+    {
+        const mockAppInfos = [
+            {
+                should_show: () => false,
+                get_id: () => 'hidden-helper.desktop',
+                get_display_name: () => 'Hidden Helper',
+            },
+            {
+                should_show: () => true,
+                get_id: () => 'org.gnome.Console.desktop',
+                get_display_name: () => 'Console',
+                get_startup_wm_class: () => 'kgx',
+                get_icon: () => null,
+            },
+            {
+                should_show: () => true,
+                get_id: () => 'code.desktop',
+                get_display_name: () => 'Visual Studio Code',
+                get_startup_wm_class: () => 'Code',
+                get_icon: () => null,
+            },
+            {
+                should_show: () => true,
+                get_id: () => 'org.gnome.Console.desktop',
+                get_display_name: () => 'Duplicate Console',
+            },
+        ];
+
+        const apps = getInstalledApplications(mockAppInfos);
+        assertEquals(apps.length, 2, 'Should filter hidden and duplicate entries');
+        assertEquals(apps[0].appId, 'org.gnome.Console', 'Console sorted first by displayName');
+        assertEquals(apps[1].appId, 'code', 'VS Code sorted second');
+
+        const fallbackApps = getInstalledApplications([]);
+        assertEquals(fallbackApps.length, COMMON_APP_SUGGESTIONS.length, 'Empty list falls back to common suggestions');
+
+        const lookup = buildAppLookupMap(apps);
+        assertEquals(lookup.get('org.gnome.console')?.displayName, 'Console', 'Lookup by normalized appId');
+        assertEquals(lookup.get('code')?.displayName, 'Visual Studio Code', 'Lookup by appId');
+        assertEquals(lookup.get('kgx')?.appId, 'org.gnome.Console', 'Lookup by wmClass');
+
+        const mockDesktopSettings = {
+            get_value: key => {
+                if (key === 'sources')
+                    return new GLib.Variant('a(ss)', [['xkb', 'us'], ['xkb', 'ru']]);
+                return null;
+            },
+        };
+        const mockXkbInfo = {
+            get_layout_info: id => {
+                if (id === 'us')
+                    return [true, 'English (US)', 'en', 'us', ''];
+                if (id === 'ru')
+                    return [true, 'Russian', 'ru', 'ru', ''];
+                return [false, '', '', '', ''];
+            },
+        };
+        const sources = getConfiguredInputSources(mockDesktopSettings, mockXkbInfo);
+        assertEquals(sources.length, 2, 'Parsed 2 configured input sources');
+        assertEquals(sources[0].id, 'us', 'First source id is us');
+        assertEquals(sources[0].label, 'English (US) (us)', 'Formatted label includes displayName and id');
+        assertEquals(sources[1].id, 'ru', 'Second source id is ru');
 
         print('  -> PASS');
     }
