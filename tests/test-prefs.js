@@ -2,143 +2,23 @@
 // Liswitch: Unit tests for preferences window (prefs.js)
 
 import Gio from 'gi://Gio';
-import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk?version=4.0';
 import Gdk from 'gi://Gdk?version=4.0';
 
-// Register Shell Extensions gresource for standalone testing if available
 try {
-    const resPath = '/usr/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource';
-    const res = Gio.Resource.load(resPath);
-    Gio.resources_register(res);
+    Gtk.init();
 } catch {
     // Already registered or unavailable
 }
 
+import {
+    assert,
+    assertEquals,
+    createMockSettings,
+} from './helpers.js';
+
 const {default: LiswitchPreferences} = await import('../prefs.js');
 const {normalizeShortcut} = await import('../src/hotkeys.js');
-
-function assert(condition, message) {
-    if (!condition)
-        throw new Error(`Assertion failed: ${message}`);
-}
-
-function assertEquals(actual, expected, message) {
-    if (actual !== expected)
-        throw new Error(`Assertion failed: ${message} (expected: ${expected}, got: ${actual})`);
-}
-
-class MockEmitter {
-    constructor() {
-        this._listeners = new Map();
-        this._nextHandlerId = 1;
-    }
-
-    connect(signal, callback) {
-        const id = this._nextHandlerId++;
-        if (!this._listeners.has(signal))
-            this._listeners.set(signal, new Map());
-        this._listeners.get(signal).set(id, callback);
-        return id;
-    }
-
-    disconnect(handlerId) {
-        for (const map of this._listeners.values()) {
-            if (map.delete(handlerId))
-                return;
-        }
-    }
-
-    emit(signal, ...args) {
-        const map = this._listeners.get(signal);
-        if (!map)
-            return;
-        for (const cb of Array.from(map.values())) {
-            cb(this, ...args);
-        }
-    }
-}
-
-class MockSettings extends MockEmitter {
-    constructor(initial = {}) {
-        super();
-        this._values = Object.assign({
-            'indicator-enabled': true,
-            'hide-system-indicator': false,
-            'indicator-format': 'short',
-            'scroll-switch': true,
-            'show-osd': true,
-            'osd-duration-ms': 1000,
-            'osd-show-on-auto-switch': false,
-            'debug': false,
-            'memory-mode': 'per-app',
-            'default-layout-mode': 'keep',
-            'memory-excluded-apps': [],
-            'hotkey-next': ['<Control><Alt>space'],
-            'hotkey-previous': ['<Control><Alt><Shift>space'],
-            'hotkey-switch-1': [],
-            'hotkey-switch-2': [],
-            'hotkey-switch-3': [],
-            'hotkey-switch-4': [],
-            'backup-system-shortcuts': '{}',
-            'backup-system-switch-keys': [],
-            'backup-system-switch-backward-keys': [],
-        }, initial);
-
-        this.settings_schema = {
-            has_key: k => Object.prototype.hasOwnProperty.call(this._values, k),
-        };
-    }
-
-    get_boolean(key) {
-        return Boolean(this._values[key]);
-    }
-
-    set_boolean(key, val) {
-        this._values[key] = Boolean(val);
-        this.emit(`changed::${key}`);
-    }
-
-    get_string(key) {
-        return String(this._values[key] ?? '');
-    }
-
-    set_string(key, val) {
-        this._values[key] = String(val);
-        this.emit(`changed::${key}`);
-    }
-
-    get_uint(key) {
-        return Number(this._values[key]) || 0;
-    }
-
-    set_uint(key, val) {
-        this._values[key] = Number(val);
-        this.emit(`changed::${key}`);
-    }
-
-    get_strv(key) {
-        return Array.isArray(this._values[key]) ? this._values[key].slice() : [];
-    }
-
-    set_strv(key, val) {
-        this._values[key] = Array.isArray(val) ? val.slice() : [];
-        this.emit(`changed::${key}`);
-    }
-
-    bind(key, target, property, _flags) {
-        // Mock two-way property binding for SwitchRow
-        if (typeof this._values[key] === 'boolean') {
-            target[property] = this._values[key];
-            target.connect?.(`notify::${property}`, () => {
-                this.set_boolean(key, target[property]);
-            });
-            this.connect(`changed::${key}`, () => {
-                target[property] = this._values[key];
-            });
-        }
-    }
-}
 
 class MockPreferencesWindow {
     constructor() {
@@ -171,7 +51,7 @@ function runTests() {
     // Test 2: Validation of duplicate shortcuts between actions
     print('Test 2: Validation of duplicate shortcuts between actions...');
     {
-        const settings = new MockSettings({
+        const settings = createMockSettings({
             'hotkey-next': ['<Control><Alt>space'],
             'hotkey-previous': ['<Control><Alt><Shift>space'],
         });
@@ -221,7 +101,7 @@ function runTests() {
             dir: Gio.File.new_for_path('.'),
         };
         const prefs = new LiswitchPreferences(metadata);
-        const settings = new MockSettings();
+        const settings = createMockSettings();
         prefs.getSettings = () => settings;
 
         const window = new MockPreferencesWindow();
@@ -245,7 +125,7 @@ function runTests() {
     // Test 4: Dynamic settings changes in prefs
     print('Test 4: Settings schema and key reactivity...');
     {
-        const settings = new MockSettings();
+        const settings = createMockSettings();
 
         // Change memory mode
         settings.set_string('memory-mode', 'per-window');

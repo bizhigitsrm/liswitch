@@ -2,85 +2,26 @@
 // Liswitch: Performance and benchmark tests
 
 import GLib from 'gi://GLib';
-import GObject from 'gi://GObject';
-import Gio from 'gi://Gio';
 import {WindowMemory} from '../src/windowMemory.js';
 import * as Log from '../src/log.js';
-
-function assert(condition, message) {
-    if (!condition)
-        throw new Error(`Assertion failed: ${message}`);
-}
+import {
+    assert,
+    createMemorySettings,
+    MockInputSourceService,
+    MockWindow,
+    MockDisplay,
+    MockDesktopSettings,
+} from './helpers.js';
 
 console.log('=== Liswitch: Performance & Timing Benchmarks ===\n');
 
-// 1. Setup mock Gio.Settings
-const settingsSource = Gio.SettingsSchemaSource.new_from_directory(
-    'schemas',
-    Gio.SettingsSchemaSource.get_default(),
-    false
-);
-const schema = settingsSource.lookup('org.gnome.shell.extensions.liswitch', false);
-const settings = new Gio.Settings({settings_schema: schema});
+const settings = createMemorySettings();
 
 // Disable debug logging to measure pure operational latency
 Log.setDebugOverride(false);
 
-const MockInputSourceService = GObject.registerClass({
-    GTypeName: 'MockPerfInputSourceService',
-    Signals: {
-        'sources-changed': {},
-        'current-changed': {param_types: [GObject.TYPE_INT]},
-    },
-}, class MockPerfInputSourceService extends GObject.Object {
-    constructor() {
-        super();
-        this._sources = [
-            {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'},
-            {index: 1, id: 'ru', shortName: 'ru', displayName: 'Russian'},
-            {index: 2, id: 'kz', shortName: 'kz', displayName: 'Kazakh'},
-        ];
-        this._currentIndex = 0;
-        this.activateCount = 0;
-    }
-
-    get isAvailable() { return true; }
-    getSources() { return this._sources; }
-    getCurrentIndex() { return this._currentIndex; }
-    getCurrentSource() { return this._sources[this._currentIndex]; }
-
-    activate(index, interactive = true) {
-        this.activateCount++;
-        this._currentIndex = index;
-        this.emit('current-changed', index);
-        return true;
-    }
-});
-
-class MockWindow {
-    constructor(id, appId) {
-        this._id = id;
-        this._appId = appId;
-    }
-    get_id() { return this._id; }
-    get_sandboxed_app_id() { return this._appId; }
-    get_gtk_application_id() { return this._appId; }
-    get_wm_class() { return this._appId; }
-    connect() { return 1; }
-    disconnect() {}
-}
-
-const mockDisplay = {
-    focus_window: null,
-    connect: () => 1,
-    disconnect: () => {},
-};
-
-const mockDesktopSettings = {
-    get_boolean: () => false,
-    connect: () => 1,
-    disconnect: () => {},
-};
+const mockDisplay = new MockDisplay();
+const mockDesktopSettings = new MockDesktopSettings(false);
 
 const inputService = new MockInputSourceService();
 const memory = new WindowMemory(settings, inputService);

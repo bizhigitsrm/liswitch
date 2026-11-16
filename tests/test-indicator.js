@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Liswitch: Unit tests for indicator.js
 
-import GObject from 'gi://GObject';
-import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 
 import {
@@ -12,120 +10,15 @@ import {
 } from '../src/indicator.js';
 import {InputSourceService} from '../src/inputSourceService.js';
 import * as Log from '../src/log.js';
+import {
+    assert,
+    assertEquals,
+    MockInputSource,
+    MockInputSourceManager,
+    createMockSettings,
+} from './helpers.js';
 
 Log.setDebugOverride(true);
-
-function assert(condition, message) {
-    if (!condition)
-        throw new Error(`Assertion failed: ${message}`);
-}
-
-function assertEquals(actual, expected, message) {
-    if (actual !== expected)
-        throw new Error(`Assertion failed: ${message} (expected: ${expected}, got: ${actual})`);
-}
-
-// Mock InputSourceManager matching GNOME Shell 51
-const MockInputSource = GObject.registerClass({
-    GTypeName: 'MockInputSourceIndicator',
-    Signals: {
-        'activate': {param_types: [GObject.TYPE_BOOLEAN]},
-        'changed': {},
-    },
-}, class MockInputSource extends GObject.Object {
-    constructor(id, displayName, shortName, index, manager = null) {
-        super();
-        this.id = id;
-        this.displayName = displayName;
-        this.shortName = shortName;
-        this.index = index;
-        this._manager = manager;
-    }
-
-    activate(interactive = true) {
-        if (this._manager)
-            this._manager.activateInputSource(this, interactive);
-        this.emit('activate', interactive);
-    }
-});
-
-const MockInputSourceManager = GObject.registerClass({
-    GTypeName: 'MockInputSourceManagerIndicator',
-    Signals: {
-        'sources-changed': {},
-        'current-source-changed': {},
-    },
-}, class MockInputSourceManager extends GObject.Object {
-    constructor(sourceSpecs = []) {
-        super();
-        this._sources = {};
-        for (const s of sourceSpecs) {
-            if (s instanceof MockInputSource) {
-                s._manager = this;
-                this._sources[s.index] = s;
-            } else {
-                const is = new MockInputSource(s.id, s.displayName, s.shortName, s.index, this);
-                this._sources[s.index] = is;
-            }
-        }
-        this._current = this._sources[0] ?? null;
-    }
-
-    get inputSources() {
-        return this._sources;
-    }
-
-    get currentSource() {
-        return this._current;
-    }
-
-    activateInputSource(source, interactive = true) {
-        this._current = source;
-        this.emit('current-source-changed');
-    }
-});
-
-// Mock Gio.Settings backed by in-memory key-value dictionary
-const MockSettings = GObject.registerClass({
-    GTypeName: 'MockSettingsIndicator',
-    Signals: {
-        'changed': {
-            flags: GObject.SignalFlags.RUN_LAST | GObject.SignalFlags.DETAILED,
-            param_types: [GObject.TYPE_STRING],
-        },
-    },
-}, class MockSettings extends GObject.Object {
-    constructor(initial = {}) {
-        super();
-        this._data = {
-            'indicator-enabled': true,
-            'hide-system-indicator': false,
-            'indicator-format': 'short',
-            'scroll-switch': true,
-            ...initial,
-        };
-    }
-
-    get_boolean(key) {
-        return Boolean(this._data[key]);
-    }
-
-    set_boolean(key, val) {
-        this._data[key] = Boolean(val);
-        this.emit(`changed::${key}`, key);
-        this.emit('changed', key);
-    }
-
-    get_string(key) {
-        return String(this._data[key] ?? '');
-    }
-
-    set_string(key, val) {
-        this._data[key] = String(val);
-        this.emit(`changed::${key}`, key);
-        this.emit('changed', key);
-    }
-});
 
 console.log('=== Liswitch: Indicator Unit Tests ===\n');
 
@@ -159,7 +52,7 @@ console.log('Test 2: Indicator initialization, label and menu state...');
     const service = new InputSourceService();
     service.enable({manager: mockManager});
 
-    const settings = new MockSettings();
+    const settings = createMockSettings();
     let prefsOpened = false;
 
     const indicator = new Indicator(settings, service, () => {
@@ -187,7 +80,7 @@ console.log('Test 3: Layout switching updates label and menu dot ornament...');
     const service = new InputSourceService();
     service.enable({manager: mockManager});
 
-    const settings = new MockSettings();
+    const settings = createMockSettings();
     const indicator = new Indicator(settings, service);
 
     assertEquals(indicator.label.text, 'EN', 'Before switch: EN');
@@ -214,7 +107,7 @@ console.log('Test 4: GSettings indicator-format changes update label dynamically
     const service = new InputSourceService();
     service.enable({manager: mockManager});
 
-    const settings = new MockSettings({ 'indicator-format': 'short' });
+    const settings = createMockSettings({'indicator-format': 'short'});
     const indicator = new Indicator(settings, service);
 
     assertEquals(indicator.label.text, 'EN', 'Format short: EN');
@@ -241,7 +134,7 @@ console.log('Test 5: Mouse scroll switches layout (UP/DOWN/SMOOTH)...');
     const service = new InputSourceService();
     service.enable({manager: mockManager});
 
-    const settings = new MockSettings({ 'scroll-switch': true });
+    const settings = createMockSettings({'scroll-switch': true});
     const indicator = new Indicator(settings, service);
 
     // Mock scroll event: DOWN -> next()
@@ -290,7 +183,7 @@ console.log('Test 6: sources-changed dynamically updates menu...');
     const service = new InputSourceService();
     service.enable({manager: mockManager});
 
-    const settings = new MockSettings();
+    const settings = createMockSettings();
     const indicator = new Indicator(settings, service);
 
     assertEquals(indicator.menuItems.size, 1, 'Initially 1 layout in menu');
@@ -300,10 +193,7 @@ console.log('Test 6: sources-changed dynamically updates menu...');
         {id: 'us', displayName: 'English (US)', shortName: 'en', index: 0},
         {id: 'kz', displayName: 'Kazakh', shortName: 'kk', index: 1},
     ];
-    mockManager._sources = {};
-    for (const s of newSpecs)
-        mockManager._sources[s.index] = new MockInputSource(s.id, s.displayName, s.shortName, s.index, mockManager);
-    mockManager.emit('sources-changed');
+    mockManager.setSources(newSpecs);
 
     assertEquals(indicator.menuItems.size, 2, 'Menu rebuilt with 2 layouts after sources-changed');
     assertEquals(indicator.label.text, 'EN', 'Current layout preserved');
@@ -323,7 +213,7 @@ console.log('Test 7: 20 cycles of create/destroy to verify leak-free cleanup...'
     const mockManager = new MockInputSourceManager(sources);
     const service = new InputSourceService();
     service.enable({manager: mockManager});
-    const settings = new MockSettings();
+    const settings = createMockSettings();
 
     for (let i = 1; i <= 20; i++) {
         const ind = new Indicator(settings, service);

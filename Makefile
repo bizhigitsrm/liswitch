@@ -2,6 +2,9 @@ UUID = liswitch@local
 PACK_FILE = $(UUID).shell-extension.zip
 SCHEMA_DIR = schemas
 SCHEMA_FILE = $(SCHEMA_DIR)/org.gnome.shell.extensions.liswitch.gschema.xml
+SHELL_LIBDIR ?= $(firstword $(wildcard /usr/lib64/gnome-shell /usr/lib/x86_64-linux-gnu/gnome-shell /usr/lib/gnome-shell))
+MUTTER_LIBDIR ?= $(firstword $(wildcard /usr/lib64/mutter-* /usr/lib/x86_64-linux-gnu/mutter-* /usr/lib/mutter-*))
+SHELL_GI_ENV = GI_TYPELIB_PATH=$(SHELL_LIBDIR):$(SHELL_LIBDIR)/girepository-1.0:$(MUTTER_LIBDIR) LD_LIBRARY_PATH=$(SHELL_LIBDIR):$(MUTTER_LIBDIR)
 
 .PHONY: all schemas translations pot pack install uninstall enable disable logs nested test unit-test lint check clean release
 
@@ -56,18 +59,18 @@ nested:
 	@echo "Attempting to launch..."
 	dbus-run-session gnome-shell --wayland --no-x11
 
-unit-test:
+unit-test: schemas
 	@echo "==> Running pure-GJS unit tests..."
-	gjs -m tests/test-input-source-service.js
-	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 gjs -m tests/test-indicator.js
-	XDG_RUNTIME_DIR=/tmp gjs -m tests/test-hotkeys.js
-	XDG_RUNTIME_DIR=/tmp gjs -m tests/test-window-memory.js
-	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 gjs -m tests/test-osd.js
-	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/gnome-shell/girepository-1.0:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 gjs -m tests/test-prefs.js
-	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 XDG_RUNTIME_DIR=/tmp gjs -m tests/test-text-correction.js
-	XDG_RUNTIME_DIR=/tmp gjs -m tests/test-performance.js
-	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 XDG_RUNTIME_DIR=/tmp gjs -m tests/test-stress-100-cycles.js
-	GI_TYPELIB_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 LD_LIBRARY_PATH=/usr/lib64/gnome-shell:/usr/lib64/mutter-51 XDG_RUNTIME_DIR=/tmp gjs -m tests/test-resilience.js
+	GSETTINGS_BACKEND=memory gjs -m tests/test-input-source-service.js
+	GSETTINGS_BACKEND=memory $(SHELL_GI_ENV) gjs -m tests/test-indicator.js
+	GSETTINGS_BACKEND=memory XDG_RUNTIME_DIR=/tmp gjs -m tests/test-hotkeys.js
+	GSETTINGS_BACKEND=memory XDG_RUNTIME_DIR=/tmp gjs -m tests/test-window-memory.js
+	GSETTINGS_BACKEND=memory $(SHELL_GI_ENV) gjs -m tests/test-osd.js
+	GSETTINGS_BACKEND=memory $(SHELL_GI_ENV) gjs -m tests/test-prefs.js
+	GSETTINGS_BACKEND=memory $(SHELL_GI_ENV) XDG_RUNTIME_DIR=/tmp gjs -m tests/test-text-correction.js
+	GSETTINGS_BACKEND=memory XDG_RUNTIME_DIR=/tmp gjs -m tests/test-performance.js
+	GSETTINGS_BACKEND=memory $(SHELL_GI_ENV) XDG_RUNTIME_DIR=/tmp gjs -m tests/test-stress-100-cycles.js
+	GSETTINGS_BACKEND=memory $(SHELL_GI_ENV) XDG_RUNTIME_DIR=/tmp gjs -m tests/test-resilience.js
 
 test: pack unit-test
 	@echo "==> Running smoke test via gnome-shell-test-tool (if DBus session bus is available)..."

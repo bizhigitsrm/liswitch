@@ -1,74 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Liswitch: TextCorrection and TextTranslator Unit Tests (pure GJS)
 
-import GObject from 'gi://GObject';
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
 import {TextTranslator} from '../src/textTranslator.js';
 import {TextCorrectionManager} from '../src/textCorrection.js';
-
-function assert(condition, message) {
-    if (!condition)
-        throw new Error(`Assertion failed: ${message}`);
-}
-
-function assertEqual(actual, expected, message) {
-    if (actual !== expected)
-        throw new Error(`Assertion failed: ${message} (expected: ${JSON.stringify(expected)}, got: ${JSON.stringify(actual)})`);
-}
+import {
+    assert,
+    assertEqual,
+    createMemorySettings,
+    MockInputSourceService,
+} from './helpers.js';
 
 console.log('=== Liswitch: Text Correction Unit Tests ===\n');
 
-// Mock InputSourceService
-const MockInputSourceService = GObject.registerClass({
-    GTypeName: 'MockInputSourceServiceCorrection',
-    Signals: {
-        'sources-changed': {},
-        'current-changed': {param_types: [GObject.TYPE_INT]},
-    },
-}, class MockInputSourceServiceCorrection extends GObject.Object {
-    constructor() {
-        super();
-        this._sources = [
-            {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'},
-            {index: 1, id: 'ru', shortName: 'ru', displayName: 'Russian'},
-        ];
-        this._currentIndex = 0;
-        this.activatedIndices = [];
-    }
-
-    get isAvailable() {
-        return true;
-    }
-
-    getSources() {
-        return this._sources;
-    }
-
-    getCurrentIndex() {
-        return this._currentIndex;
-    }
-
-    getCurrentSource() {
-        return this._sources[this._currentIndex] ?? null;
-    }
-
-    activate(index, interactive = true) {
-        this.activatedIndices.push({index, interactive});
-        this._currentIndex = index;
-        this.emit('current-changed', index);
-        return true;
-    }
-});
-
-// Setup mock Gio.Settings
-const settingsSource = Gio.SettingsSchemaSource.new_from_directory(
-    'schemas',
-    Gio.SettingsSchemaSource.get_default(),
-    false
-);
-const schema = settingsSource.lookup('org.gnome.shell.extensions.liswitch', false);
-const settings = new Gio.Settings({settings_schema: schema});
+const settings = createMemorySettings();
 
 // Test 1: TextTranslator English to Russian
 console.log('Test 1: TextTranslator us -> ru conversion ("ghbdtn" -> "привет")...');

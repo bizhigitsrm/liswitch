@@ -1,129 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Liswitch: Unit tests for visual on-screen display (osd.js)
 
-import GObject from 'gi://GObject';
-
 import {OsdService} from '../src/osd.js';
 import * as Log from '../src/log.js';
+import {
+    assert,
+    assertEquals,
+    MockInputSourceService,
+    createMockSettings,
+} from './helpers.js';
 
 Log.setDebugOverride(true);
-
-function assert(condition, message) {
-    if (!condition)
-        throw new Error(`Assertion failed: ${message}`);
-}
-
-function assertEquals(actual, expected, message) {
-    if (actual !== expected)
-        throw new Error(`Assertion failed: ${message} (expected: ${expected}, got: ${actual})`);
-}
-
-class MockEmitter {
-    constructor() {
-        this._listeners = new Map();
-        this._nextHandlerId = 1;
-    }
-
-    connect(signal, callback) {
-        const id = this._nextHandlerId++;
-        if (!this._listeners.has(signal))
-            this._listeners.set(signal, new Map());
-        this._listeners.get(signal).set(id, callback);
-        return id;
-    }
-
-    disconnect(handlerId) {
-        for (const map of this._listeners.values()) {
-            if (map.delete(handlerId))
-                return;
-        }
-    }
-
-    emit(signal, ...args) {
-        const map = this._listeners.get(signal);
-        if (!map)
-            return;
-        for (const cb of Array.from(map.values())) {
-            try {
-                cb(this, ...args);
-            } catch (e) {
-                print(`Error in mock listener for "${signal}": ${e.message}`);
-            }
-        }
-    }
-}
-
-class MockSettings extends MockEmitter {
-    constructor(initial = {}) {
-        super();
-        this._values = Object.assign({
-            'show-osd': true,
-            'osd-duration-ms': 1000,
-            'osd-show-on-auto-switch': false,
-        }, initial);
-
-        this.settings_schema = {
-            has_key: k => Object.prototype.hasOwnProperty.call(this._values, k),
-        };
-    }
-
-    get_boolean(key) {
-        return Boolean(this._values[key]);
-    }
-
-    set_boolean(key, val) {
-        this._values[key] = Boolean(val);
-        this.emit(`changed::${key}`);
-    }
-
-    get_uint(key) {
-        return Number(this._values[key]) || 0;
-    }
-
-    set_uint(key, val) {
-        this._values[key] = Number(val);
-        this.emit(`changed::${key}`);
-    }
-}
-
-// Mock InputSourceService
-const MockInputSourceService = GObject.registerClass({
-    GTypeName: 'MockInputSourceServiceOsd',
-    Signals: {
-        'current-changed': {param_types: [GObject.TYPE_INT]},
-    },
-}, class MockInputSourceService extends GObject.Object {
-    constructor() {
-        super();
-        this._sources = [
-            {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'},
-            {index: 1, id: 'ru', shortName: 'ru', displayName: 'Russian'},
-            {index: 2, id: 'kk', shortName: 'kk', displayName: 'Kazakh'},
-        ];
-        this._currentIndex = 0;
-    }
-
-    getSources() {
-        return this._sources;
-    }
-
-    getCurrentIndex() {
-        return this._currentIndex;
-    }
-
-    getCurrentSource() {
-        return this._sources[this._currentIndex] ?? null;
-    }
-
-    getSourceByIndex(index) {
-        return this._sources.find(s => s.index === index) ?? null;
-    }
-
-    emitCurrentChanged(index) {
-        this._currentIndex = index;
-        this.emit('current-changed', index);
-    }
-});
 
 // Mock WindowMemory
 class MockWindowMemory {
@@ -143,7 +30,7 @@ class MockWindowMemory {
 function runTests() {
     print('=== Liswitch: Visual OSD Unit Tests ===\n');
 
-    const settings = new MockSettings();
+    const settings = createMockSettings();
 
     // -------------------------------------------------------------
     print('Test 1: Initialization & default properties...');

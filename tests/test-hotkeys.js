@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Unit tests for HotkeyManager and shortcut conflict resolution
 
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-
 import {
     HotkeyManager,
     normalizeShortcut,
@@ -17,128 +14,13 @@ import {
 } from '../src/hotkeys.js';
 import {InputSourceService} from '../src/inputSourceService.js';
 import * as Log from '../src/log.js';
-
-function assert(condition, message) {
-    if (!condition) {
-        throw new Error(`Assertion failed: ${message}`);
-    }
-}
-
-function assertEqual(actual, expected, message = '') {
-    if (actual !== expected) {
-        throw new Error(`Assertion failed: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}. ${message}`);
-    }
-}
-
-// Mock InputSourceManager for test service
-class MockInputSourceManager {
-    constructor() {
-        this.inputSources = {
-            0: {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'},
-            1: {index: 1, id: 'ru', shortName: 'ru', displayName: 'Russian'},
-        };
-        this.currentSource = this.inputSources[0];
-        this._listeners = new Map();
-    }
-
-    connect(signal, callback) {
-        if (!this._listeners.has(signal))
-            this._listeners.set(signal, new Set());
-        this._listeners.get(signal).add(callback);
-        return callback;
-    }
-
-    disconnect(callback) {
-        for (const set of this._listeners.values()) {
-            set.delete(callback);
-        }
-    }
-
-    activateInputSource(is, interactive = true) {
-        this.currentSource = is;
-        const listeners = this._listeners.get('current-source-changed');
-        if (listeners) {
-            for (const cb of Array.from(listeners))
-                cb(this, is);
-        }
-    }
-}
-
-// Mock WindowManager simulating Main.wm
-class MockWindowManager {
-    constructor() {
-        this.keybindings = new Map();
-        this.callLog = [];
-    }
-
-    addKeybinding(name, settings, flags, modes, handler) {
-        this.callLog.push({action: 'add', name, flags, modes});
-        const actionId = this.keybindings.size + 1;
-        this.keybindings.set(name, {settings, flags, modes, handler, actionId});
-        return actionId;
-    }
-
-    removeKeybinding(name) {
-        this.callLog.push({action: 'remove', name});
-        return this.keybindings.delete(name);
-    }
-
-    trigger(name) {
-        const binding = this.keybindings.get(name);
-        if (binding && typeof binding.handler === 'function') {
-            binding.handler(null, null, null, null);
-            return true;
-        }
-        return false;
-    }
-}
-
-// In-memory mock Gio.Settings
-class MockSettings {
-    constructor(initial = {}) {
-        this._values = new Map(Object.entries(initial));
-        this._listeners = new Map();
-    }
-
-    get_strv(key) {
-        return this._values.get(key) ?? [];
-    }
-
-    set_strv(key, arr) {
-        this._values.set(key, [...arr]);
-        this._emit(`changed::${key}`);
-    }
-
-    get_string(key) {
-        return this._values.get(key) ?? '';
-    }
-
-    set_string(key, str) {
-        this._values.set(key, str);
-        this._emit(`changed::${key}`);
-    }
-
-    connect(signal, callback) {
-        if (!this._listeners.has(signal))
-            this._listeners.set(signal, new Set());
-        this._listeners.get(signal).add(callback);
-        return callback;
-    }
-
-    disconnect(callback) {
-        for (const set of this._listeners.values()) {
-            set.delete(callback);
-        }
-    }
-
-    _emit(signal) {
-        const listeners = this._listeners.get(signal);
-        if (listeners) {
-            for (const cb of Array.from(listeners))
-                cb();
-        }
-    }
-}
+import {
+    assert,
+    assertEqual,
+    MockInputSourceManager,
+    MockWindowManager,
+    MockSettings,
+} from './helpers.js';
 
 function runTests() {
     console.log('=== Liswitch: HotkeyManager Unit Tests ===\n');

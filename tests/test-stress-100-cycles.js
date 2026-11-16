@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Liswitch: 100-cycle stress test for enable/disable lifecycle
 
-import Gio from 'gi://Gio';
-import GObject from 'gi://GObject';
 import {InputSourceService} from '../src/inputSourceService.js';
 import {WindowMemory} from '../src/windowMemory.js';
 import {HotkeyManager} from '../src/hotkeys.js';
@@ -10,63 +8,25 @@ import {OsdService} from '../src/osd.js';
 import {TextCorrectionManager} from '../src/textCorrection.js';
 import {Indicator} from '../src/indicator.js';
 import * as Log from '../src/log.js';
-
-function assert(condition, message) {
-    if (!condition)
-        throw new Error(`Assertion failed: ${message}`);
-}
+import {
+    assert,
+    createMemorySettings,
+    MockInputSourceManager,
+    MockWindowManager,
+    MockDisplay,
+    MockDesktopSettings,
+} from './helpers.js';
 
 console.log('=== Liswitch: 100-Cycle Enable/Disable Stress Test ===\n');
 
-// 1. Setup mock Gio.Settings
-const settingsSource = Gio.SettingsSchemaSource.new_from_directory(
-    'schemas',
-    Gio.SettingsSchemaSource.get_default(),
-    false
-);
-const schema = settingsSource.lookup('org.gnome.shell.extensions.liswitch', false);
-const settings = new Gio.Settings({settings_schema: schema});
-
-// Mocks for Shell components
-const MockInputSourceManager = GObject.registerClass({
-    GTypeName: 'MockStressInputSourceManager',
-    Signals: {
-        'sources-changed': {},
-        'current-source-changed': {},
-    },
-}, class MockStressInputSourceManager extends GObject.Object {
-    constructor() {
-        super();
-        this.inputSources = {
-            0: {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)', activate: () => {}},
-            1: {index: 1, id: 'ru', shortName: 'ru', displayName: 'Russian', activate: () => {}},
-        };
-        this.currentSource = this.inputSources[0];
-    }
-});
-
-const mockWm = {
-    _bindings: new Map(),
-    addKeybinding(name, _settings, _flags, _modes, handler) {
-        this._bindings.set(name, handler);
-        return 1;
-    },
-    removeKeybinding(name) {
-        this._bindings.delete(name);
-    },
-};
-
-const mockDisplay = {
-    focus_window: null,
-    connect: () => 1,
-    disconnect: () => {},
-};
-
-const mockDesktopSettings = {
-    get_boolean: () => false,
-    connect: () => 1,
-    disconnect: () => {},
-};
+const settings = createMemorySettings();
+const mockWm = new MockWindowManager();
+const mockDisplay = new MockDisplay();
+const mockDesktopSettings = new MockDesktopSettings(false);
+const defaultSources = [
+    {type: 'xkb', id: 'us', shortName: 'en', displayName: 'English (US)', index: 0},
+    {type: 'xkb', id: 'ru', shortName: 'ru', displayName: 'Russian', index: 1},
+];
 
 const CYCLES = 100;
 console.log(`Executing ${CYCLES} consecutive enable -> disable cycles...`);
@@ -76,7 +36,7 @@ const startTime = Date.now();
 for (let i = 1; i <= CYCLES; i++) {
     // 1. Enable phase (mirroring extension.js enable())
     Log.initLogger(settings, '[stress-test]');
-    const manager = new MockInputSourceManager();
+    const manager = new MockInputSourceManager(defaultSources);
 
     const inputService = new InputSourceService(settings);
     inputService.enable({manager});

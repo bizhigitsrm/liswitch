@@ -1,90 +1,28 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Liswitch: Comprehensive Resilience and Edge-Case Test Suite
 
-import Gio from 'gi://Gio';
-import GObject from 'gi://GObject';
 import {InputSourceService} from '../src/inputSourceService.js';
 import {WindowMemory} from '../src/windowMemory.js';
 import {HotkeyManager} from '../src/hotkeys.js';
 import {OsdService} from '../src/osd.js';
 import {TextCorrectionManager} from '../src/textCorrection.js';
 import {Indicator} from '../src/indicator.js';
-import * as Log from '../src/log.js';
-
-function assert(condition, message) {
-    if (!condition)
-        throw new Error(`Assertion failed: ${message}`);
-}
-
-function assertEqual(actual, expected, message) {
-    if (actual !== expected)
-        throw new Error(`Assertion failed: ${message} (expected: ${JSON.stringify(expected)}, got: ${JSON.stringify(actual)})`);
-}
+import {
+    assert,
+    assertEqual,
+    createMemorySettings,
+    MockInputSourceManager,
+    MockWindowManager,
+    MockDisplay,
+    MockDesktopSettings,
+} from './helpers.js';
 
 console.log('=== Liswitch: Resilience & Edge-Cases Test Suite ===\n');
 
-// 1. Setup mock Gio.Settings
-const settingsSource = Gio.SettingsSchemaSource.new_from_directory(
-    'schemas',
-    Gio.SettingsSchemaSource.get_default(),
-    false
-);
-const schema = settingsSource.lookup('org.gnome.shell.extensions.liswitch', false);
-const settings = new Gio.Settings({settings_schema: schema});
-
-// Reusable mock manager
-const MockInputSourceManager = GObject.registerClass({
-    GTypeName: 'MockResilienceInputSourceManager',
-    Signals: {
-        'sources-changed': {},
-        'current-source-changed': {},
-    },
-}, class MockResilienceInputSourceManager extends GObject.Object {
-    constructor(sourcesDict = {}, curIndex = 0) {
-        super();
-        this.inputSources = sourcesDict;
-        this.currentSource = sourcesDict[curIndex] ?? null;
-    }
-
-    setSources(newDict, curIdx = 0) {
-        this.inputSources = newDict;
-        this.currentSource = newDict[curIdx] ?? null;
-        this.emit('sources-changed');
-    }
-
-    setCurrent(idx) {
-        this.currentSource = this.inputSources[idx] ?? null;
-        this.emit('current-source-changed');
-    }
-
-    activateInputSource(source, interactive = true) {
-        this.currentSource = source;
-        this.emit('current-source-changed');
-    }
-});
-
-const mockWm = {
-    _bindings: new Map(),
-    addKeybinding(name, _settings, _flags, _modes, handler) {
-        this._bindings.set(name, handler);
-        return 1;
-    },
-    removeKeybinding(name) {
-        this._bindings.delete(name);
-    },
-};
-
-const mockDisplay = {
-    focus_window: null,
-    connect: () => 1,
-    disconnect: () => {},
-};
-
-const mockDesktopSettings = {
-    get_boolean: () => false,
-    connect: () => 1,
-    disconnect: () => {},
-};
+const settings = createMemorySettings();
+const mockWm = new MockWindowManager();
+const mockDisplay = new MockDisplay();
+const mockDesktopSettings = new MockDesktopSettings(false);
 
 // =========================================================================
 // Scenario 1: Dynamic add / remove layouts while extension is running

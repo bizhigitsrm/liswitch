@@ -11,178 +11,19 @@ import {
 } from '../src/windowMemory.js';
 import {InputSourceService} from '../src/inputSourceService.js';
 import * as Log from '../src/log.js';
+import {
+    assert,
+    createMemorySettings,
+    MockDisplay,
+    MockWindow,
+    MockInputSourceManager,
+    MockSettings,
+    MockDesktopSettings,
+} from './helpers.js';
 
 Log.setDebugOverride(true);
 
 console.log('=== Liswitch: WindowMemory Unit Tests ===\n');
-
-// --- Pure JS Test Mocks (no GObject subclassing issues in GJS) ---
-
-class MockEmitter {
-    constructor() {
-        this._handlers = new Map();
-        this._nextId = 1;
-    }
-
-    connect(signalName, callback) {
-        const id = this._nextId++;
-        if (!this._handlers.has(signalName))
-            this._handlers.set(signalName, new Map());
-        this._handlers.get(signalName).set(id, callback);
-        return id;
-    }
-
-    disconnect(id) {
-        for (const map of this._handlers.values()) {
-            if (map.delete(id))
-                return;
-        }
-    }
-
-    emitSignal(signalName, ...args) {
-        const map = this._handlers.get(signalName);
-        if (map) {
-            for (const cb of Array.from(map.values()))
-                cb(this, ...args);
-        }
-    }
-}
-
-class MockDisplay extends MockEmitter {
-    constructor() {
-        super();
-        this.focus_window = null;
-    }
-
-    setFocus(win) {
-        this.focus_window = win;
-        this.emitSignal('notify::focus-window');
-    }
-}
-
-class MockWindow extends MockEmitter {
-    constructor({id, appId = null, wmClass = null, gtkAppId = null, sandboxedAppId = null} = {}) {
-        super();
-        this._id = id;
-        this._appId = appId;
-        this._wmClass = wmClass ?? appId;
-        this._gtkAppId = gtkAppId;
-        this._sandboxedAppId = sandboxedAppId;
-    }
-
-    get_id() {
-        return this._id;
-    }
-
-    get_wm_class() {
-        return this._wmClass;
-    }
-
-    get_gtk_application_id() {
-        return this._gtkAppId;
-    }
-
-    get_sandboxed_app_id() {
-        return this._sandboxedAppId;
-    }
-
-    get_wm_class_instance() {
-        return this._wmClass;
-    }
-
-    close() {
-        this.emitSignal('unmanaged');
-    }
-}
-
-class MockInputSourceManager extends MockEmitter {
-    constructor(sources) {
-        super();
-        this.inputSources = {};
-        for (const s of sources) {
-            this.inputSources[s.index] = {
-                index: s.index,
-                id: s.id,
-                shortName: s.shortName,
-                displayName: s.displayName,
-                activate: (interactive) => {
-                    this.activateInputSource(this.inputSources[s.index], interactive);
-                },
-            };
-        }
-
-        this.currentSource = Object.values(this.inputSources)[0] ?? null;
-        this.activateHistory = [];
-    }
-
-    activateInputSource(source, interactive) {
-        this.activateHistory.push({
-            index: source.index,
-            id: source.id,
-            interactive,
-        });
-
-        const prev = this.currentSource;
-        this.currentSource = source;
-
-        if (!prev || prev.index !== source.index)
-            this.emitSignal('current-source-changed');
-    }
-}
-
-class MockSettings extends MockEmitter {
-    constructor(initial = {}) {
-        super();
-        this._values = Object.assign({
-            'memory-mode': 'per-app',
-            'default-layout-mode': 'keep',
-            'memory-excluded-apps': [],
-        }, initial);
-    }
-
-    get_string(key) {
-        return this._values[key] ?? '';
-    }
-
-    set_string(key, val) {
-        this._values[key] = val;
-        this.emitSignal(`changed::${key}`);
-    }
-
-    get_strv(key) {
-        return this._values[key] ? [...this._values[key]] : [];
-    }
-
-    set_strv(key, val) {
-        this._values[key] = [...val];
-        this.emitSignal(`changed::${key}`);
-    }
-}
-
-class MockDesktopSettings extends MockEmitter {
-    constructor(perWindow = false) {
-        super();
-        this._perWindow = perWindow;
-    }
-
-    get_boolean(key) {
-        if (key === 'per-window')
-            return this._perWindow;
-        return false;
-    }
-
-    set_boolean(key, val) {
-        if (key === 'per-window') {
-            this._perWindow = val;
-            this.emitSignal('changed::per-window');
-        }
-    }
-}
-
-function assert(condition, message) {
-    if (!condition)
-        throw new Error(`Assertion failed: ${message}`);
-}
 
 // === TESTS ===
 
