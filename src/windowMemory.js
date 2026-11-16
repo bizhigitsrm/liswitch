@@ -2,12 +2,35 @@
 // Liswitch: Layout memory service for GNOME Shell 51
 
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import * as Log from './log.js';
 
 /**
  * Maximum number of entries kept in memory before evicting the oldest (LRU).
  */
 export const MAX_MEMORY_ENTRIES = 500;
+
+/**
+ * Default TTL (24 hours) for in-session runtime snapshots stored in XDG_RUNTIME_DIR.
+ */
+export const SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Compute default runtime snapshot path inside GLib.get_user_runtime_dir()
+ * (/run/user/$UID/liswitch/window-memory.json, tmpfs, wiped on logout).
+ *
+ * @returns {string|null}
+ */
+function getDefaultSnapshotPath() {
+    try {
+        const runtimeDir = GLib.get_user_runtime_dir();
+        if (!runtimeDir)
+            return null;
+        return GLib.build_filenamev([runtimeDir, 'liswitch', 'window-memory.json']);
+    } catch {
+        return null;
+    }
+}
 
 /**
  * LRU (Least Recently Used) cache map.
@@ -101,6 +124,15 @@ export class LruMap {
      */
     keys() {
         return this._map.keys();
+    }
+
+    /**
+     * Return iterator over [key, value] entries in LRU order (oldest first).
+     *
+     * @returns {IterableIterator<[string, any]>}
+     */
+    entries() {
+        return this._map.entries();
     }
 }
 
@@ -201,10 +233,19 @@ export class WindowMemory {
     /**
      * @param {Gio.Settings} settings - liswitch GSettings instance
      * @param {InputSourceService} inputSourceService - active InputSourceService instance
+     * @param {object} [options]
+     * @param {string|null} [options.snapshotPath] - Runtime snapshot path override (null disables file persistence)
+     * @param {number} [options.snapshotTtlMs] - Snapshot TTL in milliseconds (default 24h)
      */
-    constructor(settings, inputSourceService) {
+    constructor(settings, inputSourceService, {
+        snapshotPath = undefined,
+        snapshotTtlMs = SNAPSHOT_TTL_MS,
+    } = {}) {
         this._settings = settings;
         this._inputSourceService = inputSourceService;
+
+        this._snapshotPath = snapshotPath === undefined ? getDefaultSnapshotPath() : snapshotPath;
+        this._snapshotTtlMs = snapshotTtlMs;
 
         this._appMemory = new LruMap(MAX_MEMORY_ENTRIES);
         this._windowMemory = new LruMap(MAX_MEMORY_ENTRIES);
@@ -296,19 +337,33 @@ export class WindowMemory {
                 Log.debug('WindowMemory: default-layout-mode setting changed');
             });
             this._settingsSignals.push(modeId, appsId, defaultId);
+
         }
 
-        // 6. Check initial focus window
+        // 6. Restore in-session runtime snapshot (survives screen lock / disable->enable)
+        const mode = this.memoryMode;
+        if (mode === 'off') {
+            this._deleteSnapshot();
+        } else if (!this._systemPerWindowActive) {
+            this._restoreSnapshot();
+        }
+
+        // 7. Check initial focus window
         const initialWindow = this._display?.focus_window ?? null;
         if (initialWindow) {
             this._currentWindow = initialWindow;
             this._trackWindow(initialWindow);
 
-            const mode = this.memoryMode;
             const excluded = this.excludedApps;
             if (mode !== 'off' && !isWindowExcluded(initialWindow, excluded)) {
-                // Seed initial window with current layout if not in history
-                this._seedInitialWindow(initialWindow, mode);
+                const hasSaved = mode === 'per-app'
+                    ? Boolean(getAppKey(initialWindow) && this._appMemory.has(getAppKey(initialWindow)))
+                    : Boolean(getWindowKey(initialWindow) && this._windowMemory.has(getWindowKey(initialWindow)));
+
+                if (hasSaved && !this._systemPerWindowActive)
+                    this._restoreWindowLayout(initialWindow, mode);
+                else
+                    this._seedInitialWindow(initialWindow, mode);
             }
         }
 
@@ -324,6 +379,20 @@ export class WindowMemory {
         this._enabled = false;
 
         Log.debug('WindowMemory: destroying and clearing memory');
+
+        // Persist lightweight runtime snapshot before clearing in-memory maps
+        // so layout memory survives temporary disable() (e.g. screen lock).
+        const mode = this.memoryMode;
+        if (mode !== 'off' && !this._systemPerWindowActive) {
+            if (this._currentWindow &&
+                this._inputSourceService?.isAvailable &&
+                !isWindowExcluded(this._currentWindow, this.excludedApps)) {
+                this._saveWindowLayout(this._currentWindow, mode);
+            }
+            this._saveSnapshot();
+        } else if (mode === 'off') {
+            this._deleteSnapshot();
+        }
 
         // Disconnect all tracked window signals
         for (const [window, signalId] of this._trackedWindows) {
@@ -388,12 +457,126 @@ export class WindowMemory {
     }
 
     /**
-     * Clear all recorded window and application layouts from memory.
+     * Clear all recorded window and application layouts from memory and runtime snapshot.
      */
     clearMemory() {
         this._appMemory.clear();
         this._windowMemory.clear();
-        Log.debug('WindowMemory: in-memory cache cleared');
+        this._deleteSnapshot();
+        Log.debug('WindowMemory: in-memory cache and runtime snapshot cleared');
+    }
+
+    /**
+     * Synchronously persist a lightweight snapshot of _appMemory and _windowMemory
+     * to GLib.get_user_runtime_dir() (tmpfs, cleared on logout).
+     */
+    _saveSnapshot() {
+        if (!this._snapshotPath)
+            return;
+
+        if (this._appMemory.size === 0 && this._windowMemory.size === 0) {
+            this._deleteSnapshot();
+            return;
+        }
+
+        try {
+            const payload = {
+                version: 1,
+                savedAt: Date.now(),
+                appMemory: Array.from(this._appMemory.entries()).slice(-MAX_MEMORY_ENTRIES),
+                windowMemory: Array.from(this._windowMemory.entries()).slice(-MAX_MEMORY_ENTRIES),
+            };
+            const dir = GLib.path_get_dirname(this._snapshotPath);
+            GLib.mkdir_with_parents(dir, 0o700);
+            GLib.file_set_contents(this._snapshotPath, JSON.stringify(payload));
+            Log.debug(`WindowMemory: saved runtime snapshot (${payload.appMemory.length} apps, ${payload.windowMemory.length} windows)`);
+        } catch (e) {
+            Log.warn(`WindowMemory: failed to save runtime snapshot: ${e.message}`);
+        }
+    }
+
+    /**
+     * Synchronously restore _appMemory and _windowMemory from the runtime snapshot
+     * if it exists and has not exceeded TTL.
+     *
+     * @returns {boolean} True if a valid snapshot was restored
+     */
+    _restoreSnapshot() {
+        if (!this._snapshotPath)
+            return false;
+
+        try {
+            if (!GLib.file_test(this._snapshotPath, GLib.FileTest.EXISTS))
+                return false;
+
+            const [ok, bytes] = GLib.file_get_contents(this._snapshotPath);
+            if (!ok || !bytes || bytes.length === 0)
+                return false;
+
+            const text = new TextDecoder('utf-8').decode(bytes);
+            const payload = JSON.parse(text);
+
+            if (!payload || payload.version !== 1 || typeof payload.savedAt !== 'number') {
+                this._deleteSnapshot();
+                return false;
+            }
+
+            const ageMs = Date.now() - payload.savedAt;
+            if (ageMs > this._snapshotTtlMs || ageMs < -60000) {
+                Log.debug(`WindowMemory: runtime snapshot expired (ageMs=${ageMs}), discarding`);
+                this._deleteSnapshot();
+                return false;
+            }
+
+            const appCount = this._populateLruFromEntries(this._appMemory, payload.appMemory);
+            const winCount = this._populateLruFromEntries(this._windowMemory, payload.windowMemory);
+            Log.debug(`WindowMemory: restored runtime snapshot (${appCount} apps, ${winCount} windows)`);
+            return true;
+        } catch (e) {
+            Log.warn(`WindowMemory: failed to restore runtime snapshot: ${e.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Populate an LruMap from serialized [key, {id, index}] entries, capped at MAX_MEMORY_ENTRIES.
+     *
+     * @param {LruMap} targetMap
+     * @param {Array} entries
+     * @returns {number}
+     */
+    _populateLruFromEntries(targetMap, entries) {
+        if (!Array.isArray(entries))
+            return 0;
+
+        const slice = entries.slice(-MAX_MEMORY_ENTRIES);
+        let count = 0;
+        for (const item of slice) {
+            if (!Array.isArray(item) || item.length < 2)
+                continue;
+            const [key, val] = item;
+            if (typeof key !== 'string' || key.length === 0)
+                continue;
+            if (!val || typeof val.id !== 'string' || typeof val.index !== 'number')
+                continue;
+            targetMap.set(key, {id: val.id, index: val.index});
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * Remove the runtime snapshot file if present.
+     */
+    _deleteSnapshot() {
+        if (!this._snapshotPath)
+            return;
+        try {
+            if (GLib.file_test(this._snapshotPath, GLib.FileTest.EXISTS))
+                GLib.unlink(this._snapshotPath);
+        } catch (e) {
+            Log.debug(`WindowMemory: failed to delete runtime snapshot: ${e.message}`);
+        }
     }
 
     // === Public properties ===

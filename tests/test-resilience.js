@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Liswitch: Comprehensive Resilience and Edge-Case Test Suite
 
+import GLib from 'gi://GLib';
 import {InputSourceService} from '../src/inputSourceService.js';
 import {WindowMemory} from '../src/windowMemory.js';
-import {HotkeyManager} from '../src/hotkeys.js';
+import {
+    HotkeyManager,
+    checkConflicts,
+    freeSystemShortcut,
+    restoreSystemShortcut,
+} from '../src/hotkeys.js';
 import {OsdService} from '../src/osd.js';
 import {TextCorrectionManager} from '../src/textCorrection.js';
 import {Indicator} from '../src/indicator.js';
@@ -80,41 +86,147 @@ console.log('Scenario 2: Screen lock and unlock simulation...');
     // GNOME Shell calls disable() synchronously on all user-mode extensions.
     // When user unlocks, GNOME Shell calls enable() again.
 
+    const lockSnapshotPath = GLib.build_filenamev([
+        GLib.get_user_runtime_dir(),
+        'liswitch-test-resilience',
+        `lock-unlock-${Date.now()}.json`,
+    ]);
+
+    // Mock system WM settings holding <Super>space
+    const sysStore = new Map([
+        ['switch-input-source', ['<Super>space', 'XF86Keyboard']],
+        ['switch-input-source-backward', ['<Shift><Super>space']],
+    ]);
+    const mockSysWmSettings = {
+        get_strv: k => [...(sysStore.get(k) ?? [])],
+        set_strv: (k, v) => sysStore.set(k, [...v]),
+        get_string: k => sysStore.get(k) ?? '',
+        set_string: (k, v) => sysStore.set(k, v),
+    };
+    const mockGetSettings = schemaId => {
+        if (schemaId === 'org.gnome.desktop.wm.keybindings')
+            return mockSysWmSettings;
+        return {
+            get_strv: () => [],
+            set_strv: () => {},
+            get_string: () => '',
+            set_string: () => {},
+        };
+    };
+
+    // Mock Display & Windows with focus signal emitter
+    const displayHandlers = new Map();
+    let nextDisplayHandlerId = 1;
+    const lockDisplay = {
+        focus_window: null,
+        connect: (sig, cb) => {
+            const id = nextDisplayHandlerId++;
+            displayHandlers.set(id, cb);
+            return id;
+        },
+        disconnect: id => displayHandlers.delete(id),
+        setFocus(win) {
+            this.focus_window = win;
+            for (const cb of displayHandlers.values())
+                cb(this);
+        },
+    };
+    const makeWindow = (id, appId) => ({
+        get_id: () => id,
+        get_sandboxed_app_id: () => appId,
+        get_gtk_application_id: () => appId,
+        get_wm_class: () => appId,
+        get_wm_class_instance: () => appId,
+        connect: () => 1,
+        disconnect: () => {},
+    });
+
+    const winEditor = makeWindow(11, 'org.gnome.TextEditor');
+    const winConsole = makeWindow(12, 'org.gnome.Console');
+
+    // Configure <Super>space and free it explicitly before locking
+    const prevHotkeyNext = settings.get_strv('hotkey-next');
+    settings.set_strv('hotkey-next', ['<Super>space']);
+    const superConf = checkConflicts(settings, {getSettings: mockGetSettings})
+        .find(c => c.schemaKey === 'switch-input-source');
+    assert(Boolean(superConf), 'Conflict detected for <Super>space before lock');
+    assert(freeSystemShortcut(superConf, settings, {getSettings: mockGetSettings}), 'User freed <Super>space');
+
     let isEnabled = false;
     let inputService = null;
+    let windowMemory = null;
     let hotkeys = null;
+    const sharedManager = new MockInputSourceManager({
+        0: {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'},
+        1: {index: 1, id: 'ru', shortName: 'ru', displayName: 'Russian'},
+    }, 0);
 
     const enableExt = () => {
         isEnabled = true;
         inputService = new InputSourceService(settings);
-        inputService.enable({manager: new MockInputSourceManager({
-            0: {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'},
-        })});
-        hotkeys = new HotkeyManager(settings, inputService, {wm: mockWm});
+        inputService.enable({manager: sharedManager});
+        windowMemory = new WindowMemory(settings, inputService, {snapshotPath: lockSnapshotPath});
+        windowMemory.enable({display: lockDisplay, desktopSettings: mockDesktopSettings});
+        hotkeys = new HotkeyManager(settings, inputService, {wm: mockWm, getSettings: mockGetSettings});
         hotkeys.enable();
     };
 
     const disableExt = () => {
         hotkeys.destroy();
+        windowMemory.destroy();
         inputService.destroy();
         hotkeys = null;
+        windowMemory = null;
         inputService = null;
         isEnabled = false;
     };
 
-    // User is working
-    enableExt();
-    assert(isEnabled && mockWm._bindings.size > 0, 'Extension active in user mode');
+    try {
+        // 1. User works with 2 apps in different layouts
+        enableExt();
+        assert(isEnabled && mockWm._bindings.size > 0, 'Extension active in user mode');
+        assertEqual(mockSysWmSettings.get_strv('switch-input-source').length, 1, '<Super>space freed while active');
 
-    // Screen locks -> disable()
-    disableExt();
-    assert(!isEnabled && mockWm._bindings.size === 0, 'Keybindings completely removed on lock');
+        lockDisplay.setFocus(winEditor);
+        inputService.activate(0, true); // Editor -> us
+        lockDisplay.setFocus(winConsole);
+        inputService.activate(1, true); // Console -> ru
 
-    // Screen unlocks -> enable()
-    enableExt();
-    assert(isEnabled && mockWm._bindings.size > 0, 'Extension cleanly restored after unlock');
+        // 2. Screen locks -> disable()
+        disableExt();
+        assert(!isEnabled && mockWm._bindings.size === 0, 'Keybindings completely removed on lock');
+        assert(mockSysWmSettings.get_strv('switch-input-source').includes('<Super>space'),
+            '<Super>space cleanly restored to system during lock');
 
-    disableExt();
+        // Simulate lock screen switching keyboard layout back to 'us' (0)
+        sharedManager.setCurrent(0);
+
+        // 3. Screen unlocks -> enable()
+        enableExt();
+        assert(isEnabled && mockWm._bindings.size > 0, 'Extension cleanly restored after unlock');
+        assertEqual(mockSysWmSettings.get_strv('switch-input-source').length, 1,
+            '<Super>space automatically re-freed after unlock');
+        assert(!mockSysWmSettings.get_strv('switch-input-source').includes('<Super>space'),
+            'System no longer intercepts <Super>space after unlock');
+
+        // WindowMemory must have restored Console -> ru immediately upon unlock
+        assertEqual(inputService.getCurrentIndex(), 1, 'Focused Console layout restored to RU on unlock');
+
+        // Switching to Editor must restore its remembered US layout
+        lockDisplay.setFocus(winEditor);
+        assertEqual(inputService.getCurrentIndex(), 0, 'Remembered Editor layout US survived lock/unlock');
+
+        // Explicit restore in prefs cleans up intent
+        restoreSystemShortcut('org.gnome.desktop.wm.keybindings', 'switch-input-source', settings, {
+            getSettings: mockGetSettings,
+        });
+        windowMemory.clearMemory();
+        disableExt();
+    } finally {
+        settings.set_strv('hotkey-next', prevHotkeyNext);
+        if (GLib.file_test(lockSnapshotPath, GLib.FileTest.EXISTS))
+            GLib.unlink(lockSnapshotPath);
+    }
     console.log('  -> PASS');
 }
 

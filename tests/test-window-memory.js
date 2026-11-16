@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Liswitch: Unit tests for WindowMemory service (GNOME Shell 51 / Pure GJS)
 
+import GLib from 'gi://GLib';
 import {
     WindowMemory,
     LruMap,
@@ -8,6 +9,7 @@ import {
     getWindowKey,
     isWindowExcluded,
     MAX_MEMORY_ENTRIES,
+    SNAPSHOT_TTL_MS,
 } from '../src/windowMemory.js';
 import {InputSourceService} from '../src/inputSourceService.js';
 import * as Log from '../src/log.js';
@@ -113,7 +115,7 @@ console.log('Test 4: Scenario: 3 apps, 3 layouts, Alt+Tab, window closing, and e
     const desktopSettings = new MockDesktopSettings(false);
     const display = new MockDisplay();
 
-    const mem = new WindowMemory(settings, inputService);
+    const mem = new WindowMemory(settings, inputService, {snapshotPath: null});
     mem.enable({display, desktopSettings});
 
     // Create 3 windows for 3 applications
@@ -218,7 +220,7 @@ console.log('Test 5: Per-window mode with multiple windows of same app...');
     const desktopSettings = new MockDesktopSettings(false);
     const display = new MockDisplay();
 
-    const mem = new WindowMemory(settings, inputService);
+    const mem = new WindowMemory(settings, inputService, {snapshotPath: null});
     mem.enable({display, desktopSettings});
 
     const win1 = new MockWindow({id: 201, appId: 'org.gnome.TextEditor'});
@@ -267,7 +269,7 @@ console.log('Test 6: Memory mode "off"...');
     const desktopSettings = new MockDesktopSettings(false);
     const display = new MockDisplay();
 
-    const mem = new WindowMemory(settings, inputService);
+    const mem = new WindowMemory(settings, inputService, {snapshotPath: null});
     mem.enable({display, desktopSettings});
 
     const win1 = new MockWindow({id: 301, appId: 'app1'});
@@ -304,7 +306,7 @@ console.log('Test 7: Race condition and feedback loop prevention...');
     const desktopSettings = new MockDesktopSettings(false);
     const display = new MockDisplay();
 
-    const mem = new WindowMemory(settings, inputService);
+    const mem = new WindowMemory(settings, inputService, {snapshotPath: null});
     mem.enable({display, desktopSettings});
 
     const winA = new MockWindow({id: 401, appId: 'appA'});
@@ -345,7 +347,7 @@ console.log('Test 8: System per-window option compatibility...');
     const desktopSettings = new MockDesktopSettings(true); // System per-window enabled!
     const display = new MockDisplay();
 
-    const mem = new WindowMemory(settings, inputService);
+    const mem = new WindowMemory(settings, inputService, {snapshotPath: null});
     mem.enable({display, desktopSettings});
 
     assert(mem.isSystemPerWindowActive === true, 'Detected system per-window as active');
@@ -402,7 +404,7 @@ console.log('Test 9: default-layout-mode ("keep" vs "first")...');
     const desktopSettings = new MockDesktopSettings(false);
     const display = new MockDisplay();
 
-    const mem = new WindowMemory(settings, inputService);
+    const mem = new WindowMemory(settings, inputService, {snapshotPath: null});
     mem.enable({display, desktopSettings});
 
     // Set global layout to 1 (RU)
@@ -436,7 +438,7 @@ console.log('Test 10: 20 cycles of enable/destroy without signal leaks...');
     const display = new MockDisplay();
 
     for (let cycle = 1; cycle <= 20; cycle++) {
-        const mem = new WindowMemory(settings, inputService);
+        const mem = new WindowMemory(settings, inputService, {snapshotPath: null});
         mem.enable({display, desktopSettings});
 
         const win = new MockWindow({id: 700 + cycle, appId: `app-${cycle}`});
@@ -450,6 +452,146 @@ console.log('Test 10: 20 cycles of enable/destroy without signal leaks...');
 
     inputService.destroy();
     console.log('  -> PASS (20 cycles cleanly executed, no leaks)');
+}
+
+// Test 11: In-session runtime snapshot survives lock/unlock (destroy -> enable)
+console.log('Test 11: Runtime snapshot preserves app & window memory across lock/unlock...');
+{
+    const testSnapshotPath = GLib.build_filenamev([
+        GLib.get_user_runtime_dir(),
+        'liswitch-test-snapshot',
+        `wm-test-${Date.now()}.json`,
+    ]);
+
+    try {
+        const sources = [
+            {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'},
+            {index: 1, id: 'ru', shortName: 'ru', displayName: 'Russian'},
+            {index: 2, id: 'kk', shortName: 'kk', displayName: 'Kazakh'},
+        ];
+        const mockManager = new MockInputSourceManager(sources);
+        const inputService = new InputSourceService();
+        inputService.enable({manager: mockManager});
+
+        const settings = new MockSettings({'memory-mode': 'per-app'});
+        const desktopSettings = new MockDesktopSettings(false);
+        const display = new MockDisplay();
+
+        const winEditor = new MockWindow({id: 801, appId: 'org.gnome.TextEditor'});
+        const winConsole = new MockWindow({id: 802, appId: 'org.gnome.Console'});
+
+        // Session before lock
+        const mem1 = new WindowMemory(settings, inputService, {snapshotPath: testSnapshotPath});
+        mem1.enable({display, desktopSettings});
+
+        display.setFocus(winEditor);
+        inputService.activate(0, true); // Editor -> US
+        display.setFocus(winConsole);
+        inputService.activate(1, true); // Console -> RU
+
+        // Lock screen -> destroy()
+        mem1.destroy();
+        assert(mem1.appMemorySize === 0, 'In-memory map cleared on destroy()');
+        assert(GLib.file_test(testSnapshotPath, GLib.FileTest.EXISTS), 'Runtime snapshot written to XDG_RUNTIME_DIR');
+
+        // Simulate lock screen switching active layout back to US while Console remains focused
+        inputService.activate(0, true);
+        assert(inputService.getCurrentIndex() === 0, 'Layout changed to US during lock');
+
+        // Unlock screen -> new WindowMemory instance enabled with Console focused
+        mockManager.activateHistory = [];
+        const mem2 = new WindowMemory(settings, inputService, {snapshotPath: testSnapshotPath});
+        mem2.enable({display, desktopSettings});
+
+        assert(mem2.getSavedAppLayout('org.gnome.TextEditor')?.id === 'us', 'Editor layout restored from snapshot');
+        assert(mem2.getSavedAppLayout('org.gnome.Console')?.id === 'ru', 'Console layout restored from snapshot');
+        assert(inputService.getCurrentIndex() === 1, 'Focused Console layout immediately restored to RU on unlock');
+
+        // Switch focus to Editor -> must restore US
+        display.setFocus(winEditor);
+        assert(inputService.getCurrentIndex() === 0, 'Switching to Editor after unlock restores US');
+
+        // clearMemory() must also delete runtime snapshot
+        mem2.clearMemory();
+        assert(!GLib.file_test(testSnapshotPath, GLib.FileTest.EXISTS), 'clearMemory() removes runtime snapshot file');
+
+        mem2.destroy();
+        inputService.destroy();
+    } finally {
+        if (GLib.file_test(testSnapshotPath, GLib.FileTest.EXISTS))
+            GLib.unlink(testSnapshotPath);
+    }
+    console.log('  -> PASS');
+}
+
+// Test 12: Snapshot TTL expiration and 500-entry limit enforcement
+console.log('Test 12: Snapshot TTL expiration and 500-entry LRU limit...');
+{
+    const testSnapshotPath = GLib.build_filenamev([
+        GLib.get_user_runtime_dir(),
+        'liswitch-test-snapshot',
+        `wm-ttl-${Date.now()}.json`,
+    ]);
+
+    try {
+        const sources = [
+            {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'},
+            {index: 1, id: 'ru', shortName: 'ru', displayName: 'Russian'},
+        ];
+        const mockManager = new MockInputSourceManager(sources);
+        const inputService = new InputSourceService();
+        inputService.enable({manager: mockManager});
+
+        const settings = new MockSettings({'memory-mode': 'per-app'});
+        const desktopSettings = new MockDesktopSettings(false);
+        const display = new MockDisplay();
+
+        // Write oversized (600 entries) snapshot with valid timestamp
+        const entries = [];
+        for (let i = 0; i < 600; i++)
+            entries.push([`app-${i}`, {id: 'ru', index: 1}]);
+        const dir = GLib.path_get_dirname(testSnapshotPath);
+        GLib.mkdir_with_parents(dir, 0o700);
+        GLib.file_set_contents(testSnapshotPath, JSON.stringify({
+            version: 1,
+            savedAt: Date.now(),
+            appMemory: entries,
+            windowMemory: [],
+        }));
+
+        const memValid = new WindowMemory(settings, inputService, {
+            snapshotPath: testSnapshotPath,
+            snapshotTtlMs: SNAPSHOT_TTL_MS,
+        });
+        memValid.enable({display, desktopSettings});
+        assert(memValid.appMemorySize === MAX_MEMORY_ENTRIES, `Restored snapshot capped at ${MAX_MEMORY_ENTRIES} entries`);
+        assert(!memValid.getSavedAppLayout('app-0'), 'Oldest entry app-0 discarded');
+        assert(memValid.getSavedAppLayout('app-599')?.id === 'ru', 'Newest entry app-599 retained');
+        memValid.destroy();
+
+        // Write expired snapshot (savedAt older than TTL)
+        GLib.file_set_contents(testSnapshotPath, JSON.stringify({
+            version: 1,
+            savedAt: Date.now() - 10000,
+            appMemory: [['stale-app', {id: 'ru', index: 1}]],
+            windowMemory: [],
+        }));
+
+        const memExpired = new WindowMemory(settings, inputService, {
+            snapshotPath: testSnapshotPath,
+            snapshotTtlMs: 1000,
+        });
+        memExpired.enable({display, desktopSettings});
+        assert(memExpired.appMemorySize === 0, 'Expired snapshot discarded');
+        assert(!GLib.file_test(testSnapshotPath, GLib.FileTest.EXISTS), 'Expired snapshot file unlinked');
+        memExpired.destroy();
+
+        inputService.destroy();
+    } finally {
+        if (GLib.file_test(testSnapshotPath, GLib.FileTest.EXISTS))
+            GLib.unlink(testSnapshotPath);
+    }
+    console.log('  -> PASS');
 }
 
 console.log('\n=== ALL WINDOW MEMORY TESTS PASSED SUCCESSFULLY! ===');
