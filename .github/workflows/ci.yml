@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Validate, Lint, Test & Pack (Fedora 45 / GNOME 51)
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            gnome-shell \
+            gjs \
+            glib2-devel \
+            gettext \
+            nodejs \
+            npm \
+            zip \
+            unzip \
+            make \
+            findutils \
+            diffutils \
+            dbus-daemon
+          dnf clean all
+          gnome-shell --version
+          gjs --version
+          node --version
+          msgfmt --version | head -n 1
+
+      - name: Install ESLint outside repository
+        run: |
+          npm install --no-save --no-audit --no-fund --prefix /opt/eslint eslint@^9
+          echo "/opt/eslint/node_modules/.bin" >> "$GITHUB_PATH"
+          /opt/eslint/node_modules/.bin/eslint --version
+
+      - name: Validate GSettings schema (strict)
+        run: |
+          glib-compile-schemas --strict --dry-run schemas/
+
+      - name: Validate .po catalogs and compile translations
+        run: |
+          for po_file in po/*.po; do
+            echo "Checking ${po_file}..."
+            msgfmt --check --statistics --output-file=/dev/null "${po_file}"
+          done
+          make translations
+
+      - name: Check JavaScript syntax and lint
+        run: |
+          for f in extension.js prefs.js src/*.js tests/*.js; do
+            node --check "${f}"
+          done
+          eslint .
+          make lint
+
+      - name: Run unit tests
+        run: |
+          make unit-test
+
+      - name: Build package and audit ZIP contents
+        run: |
+          make pack
+          ./scripts/release.sh
+          echo "==> Auditing liswitch@local.shell-extension.zip contents..."
+          unzip -l liswitch@local.shell-extension.zip
+          if unzip -Z -1 liswitch@local.shell-extension.zip | grep -Eq '(node_modules|\.git|\.github|tests/|docs/|scripts/|Makefile|\.pot?$|\.py$|\.sh$|eslint\.config|\.eslintrc|package(-lock)?\.json)'; then
+            echo "ERROR: Forbidden files detected inside extension ZIP!" >&2
+            exit 1
+          fi
+
+      - name: Run headless GNOME Shell integration test (if available in container)
+        run: |
+          if ! command -v gnome-shell-test-tool >/dev/null 2>&1 || ! command -v dbus-run-session >/dev/null 2>&1; then
+            echo "gnome-shell-test-tool or dbus-run-session unavailable; skipping headless integration test."
+            exit 0
+          fi
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          export LIBGL_ALWAYS_SOFTWARE=1
+          set +e
+          dbus-run-session -- gnome-shell-test-tool --headless --extension liswitch@local.shell-extension.zip tests/smoke-test.js 2>&1 | tee /tmp/headless-smoke.log
+          test_status=${PIPESTATUS[0]}
+          set -e
+          rm -rf "$XDG_RUNTIME_DIR"
+          if [ "$test_status" -ne 0 ]; then
+            if grep -qiE '(Failed to start X Wayland|EGL|DRM|Cannot open display|Unable to initialize|Failed to create|TakeControl|Could not connect)' /tmp/headless-smoke.log; then
+              echo "::warning::gnome-shell-test-tool --headless cannot initialize graphical backend in this container (exit $test_status); skipping headless integration check."
+              exit 0
+            fi
+            echo "ERROR: gnome-shell-test-tool --headless failed during smoke-test execution!" >&2
+            exit "$test_status"
+          fi
+
+      - name: Prepare release checksums
+        run: |
+          sha256sum liswitch@local.shell-extension.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload extension ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: liswitch-shell-extension
+          path: |
+            liswitch@local.shell-extension.zip
+            SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: liswitch-shell-extension
+
+      - name: Verify checksums
+        run: |
+          sha256sum -c SHA256SUMS.txt
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            liswitch@local.shell-extension.zip
+            SHA256SUMS.txt
