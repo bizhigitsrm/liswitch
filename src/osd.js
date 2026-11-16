@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Liswitch: Visual on-screen display (OSD) overlay for GNOME Shell 51
+// Liswitch: Visual on-screen display (OSD) overlay for GNOME Shell 47–51+
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
+import * as Compat from './compat.js';
 import * as Log from './log.js';
 
 let Main = null;
@@ -240,7 +241,7 @@ export const OsdService = GObject.registerClass({
             return;
         }
 
-        const uiGroup = Main?.uiGroup ?? Main?.layoutManager?.uiGroup;
+        const uiGroup = Compat.getUiGroup({mainModule: Main});
 
         // Outer full-screen anchor container
         this._container = new St.Widget({
@@ -254,16 +255,13 @@ export const OsdService = GObject.registerClass({
             style_class: 'liswitch-osd-container',
         });
 
-        if (Layout?.MonitorConstraint) {
-            const primary = Main?.layoutManager?.primaryIndex ?? 0;
-            this._monitorConstraint = new Layout.MonitorConstraint({
-                index: primary,
-            });
+        const primary = Main?.layoutManager?.primaryIndex ?? 0;
+        this._monitorConstraint = Compat.createMonitorConstraint(Layout, primary);
+        if (this._monitorConstraint)
             this._container.add_constraint(this._monitorConstraint);
-        }
 
         // Inner styled OSD window
-        this._box = new St.BoxLayout({
+        this._box = Compat.createBoxLayout({
             style_class: 'osd-window liswitch-osd',
             vertical: false,
             x_align: Clutter.ActorAlign.CENTER,
@@ -278,7 +276,7 @@ export const OsdService = GObject.registerClass({
         });
         this._box.add_child(this._icon);
 
-        this._vbox = new St.BoxLayout({
+        this._vbox = Compat.createBoxLayout({
             vertical: true,
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -306,11 +304,7 @@ export const OsdService = GObject.registerClass({
      * @returns {boolean}
      */
     _isReducedMotion() {
-        try {
-            return St.Settings.get().reduced_motion === St.ReducedMotion.REDUCE;
-        } catch {
-            return false;
-        }
+        return Compat.isReducedMotion(St);
     }
 
     /**
@@ -359,7 +353,7 @@ export const OsdService = GObject.registerClass({
         }
 
         const isReduced = this._isReducedMotion();
-        const uiGroup = Main?.uiGroup ?? Main?.layoutManager?.uiGroup;
+        const uiGroup = Compat.getUiGroup({mainModule: Main});
 
         if (this._container) {
             if (uiGroup?.set_child_above_sibling)

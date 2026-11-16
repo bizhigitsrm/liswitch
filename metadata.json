@@ -3,6 +3,10 @@
   "description": "Advanced keyboard layout and input source switcher for GNOME Shell",
   "uuid": "liswitch@local",
   "shell-version": [
+    "47",
+    "48",
+    "49",
+    "50",
     "51"
   ],
   "version": 1,

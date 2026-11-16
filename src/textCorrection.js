@@ -3,6 +3,7 @@
 
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
+import * as Compat from './compat.js';
 import * as Log from './log.js';
 import {TextTranslator} from './textTranslator.js';
 
@@ -114,9 +115,9 @@ export const TextCorrectionManager = GObject.registerClass({
 
         // Virtual keyboard device for Backspace and Ctrl+V injection
         try {
-            const seat = Clutter.get_default_backend?.()?.get_default_seat?.();
-            if (seat?.create_virtual_device)
-                this._virtualDevice = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+            this._virtualDevice = Compat.createVirtualKeyboardDevice({
+                clutterModule: Clutter,
+            });
         } catch (e) {
             Log.warn('TextCorrectionManager: failed to create virtual keyboard device:', e.message);
             this._virtualDevice = null;

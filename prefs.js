@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Liswitch: Preferences for GNOME Shell 51
+// Liswitch: Preferences for GNOME Shell 47–51+
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk?version=4.0';
@@ -828,7 +828,7 @@ class LiswitchAboutPage extends Adw.PreferencesPage {
         GObject.registerClass(this);
     }
 
-    constructor(_settings) {
+    constructor(_settings, metadata = null) {
         super({
             title: _('About'),
             icon_name: 'help-about-symbolic',
@@ -861,14 +861,15 @@ class LiswitchAboutPage extends Adw.PreferencesPage {
         bannerBox.append(titleLabel);
 
         const subtitleLabel = new Gtk.Label({
-            label: _('Advanced keyboard layout switcher for GNOME Shell 51'),
+            label: _('Advanced keyboard layout switcher for GNOME Shell'),
             halign: Gtk.Align.CENTER,
             css_classes: ['dim-label'],
         });
         bannerBox.append(subtitleLabel);
 
+        const versionText = metadata?.['version-name'] ?? String(metadata?.version ?? 'dev');
         const versionLabel = new Gtk.Label({
-            label: _('Version %s').format('51.0'),
+            label: _('Version %s').format(versionText),
             halign: Gtk.Align.CENTER,
             css_classes: ['dim-label'],
         });
@@ -896,7 +897,7 @@ class LiswitchAboutPage extends Adw.PreferencesPage {
 
         const platformRow = new Adw.ActionRow({
             title: _('Platform'),
-            subtitle: 'GNOME Shell 51 (Wayland)',
+            subtitle: 'GNOME Shell 47–51+ (Wayland)',
         });
         detailsGroup.add(platformRow);
 
@@ -1102,6 +1103,6 @@ export default class LiswitchPreferences extends ExtensionPreferences {
         window.add(new LiswitchShortcutsPage(settings));
         window.add(new LiswitchMemoryPage(settings));
         window.add(new LiswitchCorrectionPage(settings));
-        window.add(new LiswitchAboutPage(settings));
+        window.add(new LiswitchAboutPage(settings, this.metadata));
     }
 }

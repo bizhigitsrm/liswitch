@@ -61,6 +61,7 @@ nested:
 
 unit-test: schemas
 	@echo "==> Running pure-GJS unit tests..."
+	GSETTINGS_BACKEND=memory gjs -m tests/test-compat.js
 	GSETTINGS_BACKEND=memory gjs -m tests/test-input-source-service.js
 	GSETTINGS_BACKEND=memory $(SHELL_GI_ENV) gjs -m tests/test-indicator.js
 	GSETTINGS_BACKEND=memory XDG_RUNTIME_DIR=/tmp gjs -m tests/test-hotkeys.js

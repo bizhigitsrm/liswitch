@@ -6,6 +6,7 @@ import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
+import * as Compat from './compat.js';
 import * as Log from './log.js';
 
 let PanelMenu = null;
@@ -96,7 +97,7 @@ export const Indicator = GObject.registerClass({
     },
 }, class Indicator extends BaseButton {
     _init(settings, inputSourceService, openPreferences = null) {
-        if (PanelMenu?.Button) {
+        if (isInsideShell && PanelMenu?.Button) {
             super._init(0.5, _('Keyboard Layout Indicator'), false);
         } else {
             super._init();
@@ -227,10 +228,7 @@ export const Indicator = GObject.registerClass({
                 let item;
                 if (PopupMenu?.PopupMenuItem) {
                     item = new PopupMenu.PopupMenuItem(source.displayName);
-                    if (source.index === currentIndex)
-                        item.setOrnament(PopupMenu.Ornament.DOT);
-                    else
-                        item.setOrnament(PopupMenu.Ornament.NO_DOT);
+                    item.setOrnament(Compat.getMenuOrnament(PopupMenu, source.index === currentIndex));
 
                     item.connect('activate', () => {
                         Log.debug(`Indicator: menu item activated for source ${source.index} (${source.displayName})`);
@@ -271,10 +269,7 @@ export const Indicator = GObject.registerClass({
 
         for (const [index, item] of this._menuItems) {
             if (typeof item.setOrnament === 'function' && PopupMenu?.Ornament) {
-                if (index === currentIndex)
-                    item.setOrnament(PopupMenu.Ornament.DOT);
-                else
-                    item.setOrnament(PopupMenu.Ornament.NO_DOT);
+                item.setOrnament(Compat.getMenuOrnament(PopupMenu, index === currentIndex));
             } else if (item) {
                 item.ornament = index === currentIndex ? 1 : 4;
             }

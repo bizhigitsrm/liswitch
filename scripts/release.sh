@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Liswitch Release Packaging and Verification Script for GNOME Shell 51
+# Liswitch Release Packaging and Verification Script for GNOME Shell 47–51+
 
 set -euo pipefail
 
@@ -13,7 +13,7 @@ PACK_COMPAT_FILE="${ROOT_DIR}/${UUID}.zip"
 cd "${ROOT_DIR}"
 
 echo "============================================================"
-echo " Liswitch Release Packaging & Verification (GNOME Shell 51)"
+echo " Liswitch Release Packaging & Verification (GNOME 47–51+)"
 echo "============================================================"
 
 # Step 1: Toolchain dependency check
@@ -85,6 +85,7 @@ REQUIRED_ENTRIES=(
     "locale/ru/LC_MESSAGES/liswitch.mo"
     "locale/kk/LC_MESSAGES/liswitch.mo"
     "src/log.js"
+    "src/compat.js"
     "src/inputSourceService.js"
     "src/indicator.js"
     "src/hotkeys.js"
@@ -139,13 +140,38 @@ trap 'rm -rf "${TEMP_META_DIR}"' EXIT
 unzip -q -j "${PACK_FILE}" metadata.json -d "${TEMP_META_DIR}"
 META_FILE="${TEMP_META_DIR}/metadata.json"
 
-SHELL_VER="$(node -e 'const fs = require("fs"); const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(m["shell-version"].join(","));' "${META_FILE}")"
-UUID_VAL="$(node -e 'const fs = require("fs"); const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(m.uuid);' "${META_FILE}")"
-VERSION_VAL="$(node -e 'const fs = require("fs"); const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(typeof m.version === "number" ? m.version : "INVALID");' "${META_FILE}")"
-VERSION_NAME="$(node -e 'const fs = require("fs"); const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(m["version-name"]);' "${META_FILE}")"
+ROOT_META_FILE="${ROOT_DIR}/metadata.json"
+EXPECTED_VERSION_VAL="$(node -e 'const fs = require("fs"); const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(Number.isInteger(m.version) && m.version > 0 ? m.version : "INVALID");' "${ROOT_META_FILE}")"
+EXPECTED_VERSION_NAME="$(node -e 'const fs = require("fs"); const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(typeof m["version-name"] === "string" ? m["version-name"] : "");' "${ROOT_META_FILE}")"
 
-if [ "${SHELL_VER}" != "51" ]; then
-    echo "ERROR: metadata.json shell-version must be strictly ['51'], found: [${SHELL_VER}]" >&2
+EXPECTED_SHELL_VERSIONS=("47" "48" "49" "50" "51")
+SHELL_VER="$(node -e '
+const fs = require("fs");
+const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+if (!Array.isArray(m["shell-version"])) {
+    process.exit(1);
+}
+console.log(m["shell-version"].join(","));
+' "${META_FILE}")"
+UUID_VAL="$(node -e 'const fs = require("fs"); const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(m.uuid);' "${META_FILE}")"
+VERSION_VAL="$(node -e 'const fs = require("fs"); const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(Number.isInteger(m.version) && m.version > 0 ? m.version : "INVALID");' "${META_FILE}")"
+VERSION_NAME="$(node -e 'const fs = require("fs"); const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(typeof m["version-name"] === "string" ? m["version-name"] : "");' "${META_FILE}")"
+
+ROOT_SHELL_VER="$(node -e '
+const fs = require("fs");
+const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+console.log(Array.isArray(m["shell-version"]) ? m["shell-version"].join(",") : "");
+' "${ROOT_META_FILE}")"
+
+for ver in "${EXPECTED_SHELL_VERSIONS[@]}"; do
+    if ! echo ",${SHELL_VER}," | grep -q ",${ver},"; then
+        echo "ERROR: metadata.json shell-version must include '${ver}', found: [${SHELL_VER}]" >&2
+        exit 1
+    fi
+done
+
+if [ "${SHELL_VER}" != "${ROOT_SHELL_VER}" ]; then
+    echo "ERROR: Packaged metadata.json shell-version ([${SHELL_VER}]) does not match root metadata.json ([${ROOT_SHELL_VER}])" >&2
     exit 1
 fi
 
@@ -155,12 +181,24 @@ if [ "${UUID_VAL}" != "${UUID}" ]; then
 fi
 
 if [ "${VERSION_VAL}" = "INVALID" ]; then
-    echo "ERROR: metadata.json 'version' must be an integer, found: ${VERSION_VAL}" >&2
+    echo "ERROR: metadata.json 'version' must be a positive integer, found: ${VERSION_VAL}" >&2
     exit 1
 fi
 
-if [ "${VERSION_NAME}" != "1.0.0" ]; then
-    echo "ERROR: metadata.json 'version-name' must be '1.0.0', found: ${VERSION_NAME}" >&2
+if [ "${VERSION_VAL}" != "${EXPECTED_VERSION_VAL}" ]; then
+    echo "ERROR: Packaged metadata.json 'version' (${VERSION_VAL}) does not match metadata.json (${EXPECTED_VERSION_VAL})" >&2
+    exit 1
+fi
+
+SEMVER_REGEX='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+
+if [ -z "${VERSION_NAME}" ] || ! [[ "${VERSION_NAME}" =~ ${SEMVER_REGEX} ]]; then
+    echo "ERROR: metadata.json 'version-name' must be a valid non-empty semver (e.g. 1.0.0), found: '${VERSION_NAME}'" >&2
+    exit 1
+fi
+
+if [ "${VERSION_NAME}" != "${EXPECTED_VERSION_NAME}" ]; then
+    echo "ERROR: Packaged metadata.json 'version-name' (${VERSION_NAME}) does not match metadata.json (${EXPECTED_VERSION_NAME})" >&2
     exit 1
 fi
 

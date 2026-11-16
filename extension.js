@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Liswitch: Keyboard layout switcher for GNOME Shell 51
+// Liswitch: Keyboard layout switcher for GNOME Shell 47–51+
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as Compat from './src/compat.js';
 import {InputSourceService} from './src/inputSourceService.js';
 import {Indicator} from './src/indicator.js';
 import {HotkeyManager} from './src/hotkeys.js';
@@ -68,10 +69,8 @@ export default class LiswitchExtension extends Extension {
                     position = idx;
             }
 
-            if (Main?.panel?.addToStatusArea) {
-                Main.panel.addToStatusArea(this.uuid, this._indicator, position, 'right');
+            if (Compat.addToStatusArea(Main?.panel, this.uuid, this._indicator, position, 'right'))
                 Log.debug(`Indicator added to status area (role: ${this.uuid}, position: ${position})`);
-            }
         } else if (!isEnabled && this._indicator) {
             Log.debug('Indicator disabled in settings: destroying indicator button');
             this._indicator.destroy();

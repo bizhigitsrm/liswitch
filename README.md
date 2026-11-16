@@ -1,11 +1,11 @@
 # Liswitch (liswitch@local)
 
-[![GNOME Shell 51](https://img.shields.io/badge/GNOME%20Shell-51-blue.svg)](https://gitlab.gnome.org/GNOME/gnome-shell)
-[![Session](https://img.shields.io/badge/Session-Wayland%20Only-success.svg)](https://wayland.freedesktop.org/)
+[![GNOME Shell 47–51+](https://img.shields.io/badge/GNOME%20Shell-47--51%2B-blue.svg)](https://gitlab.gnome.org/GNOME/gnome-shell)
+[![Session](https://img.shields.io/badge/Session-Wayland-success.svg)](https://wayland.freedesktop.org/)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-green.svg)](LICENSE)
 [![Translations](https://img.shields.io/badge/Translations-en%20%7C%20ru%20%7C%20kk-orange.svg)](po/)
 
-> **Liswitch** is a lightweight, responsive, and robust keyboard layout and input source management extension engineered specifically for **GNOME Shell 51** running in pure **Wayland** sessions.
+> **Liswitch** is a lightweight, responsive, and robust keyboard layout and input source management extension engineered for **GNOME Shell 47–51+** (with primary focus on **Wayland** sessions).
 >
 > [English](#english) | [Русский](#русский)
 
@@ -184,8 +184,8 @@ If you configure Liswitch to use conflicting shortcuts:
 **Q: Why doesn't Liswitch appear in the Extensions app right after manual installation?**
 > **A:** GNOME Shell reads extension folders only during session initialization. Please log out of your GNOME session and log back in.
 
-**Q: Does Liswitch support GNOME 50 or earlier versions?**
-> **A:** No. Liswitch is specifically engineered for the GNOME 51 architecture (GJS 1.90, pure Wayland compositor, and new Mutter APIs).
+**Q: Which GNOME Shell versions does Liswitch support?**
+> **A:** Liswitch supports **GNOME Shell 47, 48, 49, 50, and 51+** via a feature-detection compatibility layer (`src/compat.js`) that adapts to runtime APIs (`St.ReducedMotion` vs `enable_animations`, `St.BoxLayout` `orientation` vs `vertical`, and `Clutter.Seat` backend resolution) without hardcoded version checks.
 
 **Q: Is the text correction feature safe?**
 > **A:** Yes. The feature is **disabled by default**. It keeps at most 64 keystrokes in temporary volatile RAM, automatically flushes after 3 seconds of inactivity, never writes keystrokes to disk, and never sends telemetry.
@@ -388,8 +388,8 @@ gnome-extensions prefs liswitch@local
 **В: Почему после ручной установки расширение не отображается в списке?**
 > **О:** GNOME Shell сканирует папки расширений только при старте. Завершите сеанс (Log Out) и войдите снова.
 
-**В: Поддерживается ли GNOME 50 или сессия X11?**
-> **О:** Нет. Начиная с GNOME 50 поддержка сессий X11 удалена из GNOME Shell. Liswitch спроектирован исключительно для чистого Wayland в GNOME Shell 51.
+**В: Какие версии GNOME Shell поддерживаются?**
+> **О:** Liswitch поддерживает **GNOME Shell 47, 48, 49, 50 и 51+** благодаря тонкому слою совместимости (`src/compat.js`) на базе feature detection (`St.ReducedMotion` / `enable_animations`, `St.BoxLayout.orientation` / `vertical`, `Clutter.Seat` через `global.backend` / `stage.context` / `Clutter.get_default_backend`) без хардкода версий. Для GNOME 50+ поддерживается только чистый Wayland (поддержка X11 удалена в самом GNOME Shell).
 
 **В: Безопасна ли функция исправления опечаток?**
 > **О:** Полностью безопасна. Функция **выключена по умолчанию**. Буфер хранится строго в оперативной памяти (не более 64 символов), очищается при паузе 3 секунды или смене окна, не пишется на диск и не передаётся по сети.

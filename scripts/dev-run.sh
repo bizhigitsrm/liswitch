@@ -11,7 +11,7 @@ UUID="liswitch@local"
 cd "${ROOT_DIR}"
 
 echo "=========================================="
-echo " Liswitch Dev Runner (GNOME Shell 51)"
+echo " Liswitch Dev Runner (GNOME Shell 47–51+)"
 echo "=========================================="
 
 echo "==> 1. Compiling GSettings schemas..."
@@ -47,7 +47,7 @@ fi
 echo "=========================================="
 echo " Extension installed to ~/.local/share/gnome-shell/extensions/${UUID}"
 echo ""
-echo " IMPORTANT NOTICE FOR WAYLAND (GNOME 51):"
+echo " IMPORTANT NOTICE FOR WAYLAND (GNOME 47–51+):"
 echo " 1) GNOME Shell discovers newly added extension directories ONLY on startup."
 echo "    If this is the first install, please reload GNOME Shell:"
 echo "    - Either Log out and log back in (recommended),"
