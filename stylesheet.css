@@ -19,6 +19,14 @@
     text-align: center;
 }
 
+.liswitch-osd-container.liswitch-osd-top {
+    padding-top: 56px;
+}
+
+.liswitch-osd-container.liswitch-osd-bottom {
+    padding-bottom: 56px;
+}
+
 .liswitch-osd {
     text-align: center;
     border-radius: 16px;

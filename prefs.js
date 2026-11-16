@@ -670,6 +670,39 @@ class LiswitchGeneralPage extends Adw.PreferencesPage {
             );
         }
 
+        const osdPositionModel = new Gtk.StringList();
+        osdPositionModel.append(_('Center of Screen'));
+        osdPositionModel.append(_('Top of Screen'));
+        osdPositionModel.append(_('Bottom of Screen'));
+
+        const osdPositionValues = ['center', 'top', 'bottom'];
+
+        const osdPositionRow = new Adw.ComboRow({
+            title: _('OSD Position'),
+            subtitle: _('Vertical placement of the OSD notification on the active monitor'),
+            model: osdPositionModel,
+        });
+        osdGroup.add(osdPositionRow);
+
+        if (this._settings.settings_schema?.has_key?.('osd-position') !== false) {
+            const currentOsdPos = this._settings.get_string('osd-position');
+            const osdPosIdx = osdPositionValues.indexOf(currentOsdPos);
+            osdPositionRow.selected = osdPosIdx >= 0 ? osdPosIdx : 0;
+
+            osdPositionRow.connect('notify::selected', () => {
+                const idx = osdPositionRow.selected;
+                if (idx >= 0 && idx < osdPositionValues.length)
+                    this._settings.set_string('osd-position', osdPositionValues[idx]);
+            });
+
+            this._tracker.connect(this._settings, 'changed::osd-position', () => {
+                const val = this._settings.get_string('osd-position');
+                const idx = osdPositionValues.indexOf(val);
+                if (idx >= 0 && osdPositionRow.selected !== idx)
+                    osdPositionRow.selected = idx;
+            });
+        }
+
         const durationRow = new Adw.SpinRow({
             title: _('OSD Duration'),
             subtitle: _('How long the OSD stays visible (in milliseconds)'),
@@ -713,6 +746,12 @@ class LiswitchGeneralPage extends Adw.PreferencesPage {
             );
         }
 
+        osdRow.bind_property(
+            'active',
+            osdPositionRow,
+            'sensitive',
+            GObject.BindingFlags.DEFAULT | GObject.BindingFlags.SYNC_CREATE
+        );
         osdRow.bind_property(
             'active',
             durationRow,

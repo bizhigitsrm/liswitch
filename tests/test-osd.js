@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Liswitch: Unit tests for visual on-screen display (osd.js)
 
+import Clutter from 'gi://Clutter';
 import {OsdService} from '../src/osd.js';
 import * as Log from '../src/log.js';
 import {
     assert,
     assertEquals,
+    MockEmitter,
     MockInputSourceService,
+    MockSettings,
     createMockSettings,
 } from './helpers.js';
 
@@ -194,6 +197,96 @@ function runTests() {
             assertEquals(osd.isShowing, false, `Cycle ${i}: should be cleanly stopped`);
         }
         print('  -> PASS (20 cycles executed cleanly, 0 timer or signal leaks)');
+    }
+
+    // -------------------------------------------------------------
+    print('Test 8: monitors-changed updates active OSD constraint and cleans up signal...');
+    {
+        const iss = new MockInputSourceService();
+        const mem = new MockWindowMemory(false);
+        const mockLayoutManager = new MockEmitter();
+        mockLayoutManager.primaryIndex = 0;
+        mockLayoutManager.monitors = [{index: 0}, {index: 1}];
+
+        const mockDisplay = {
+            focus_window: {
+                get_monitor: () => 1,
+            },
+        };
+
+        const osd = new OsdService(settings, iss, mem, {
+            layoutManager: mockLayoutManager,
+            display: mockDisplay,
+        });
+        osd.enable();
+
+        assertEquals(mockLayoutManager.getListenerCount('monitors-changed'), 1, 'Subscribed to monitors-changed');
+
+        const src = {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'};
+        osd.show(src);
+        assert(osd.isShowing, 'OSD should be showing on monitor 1');
+        assertEquals(osd._monitorConstraint.index, 1, 'OSD targets focused window monitor 1');
+
+        // External monitor disconnected while OSD is open
+        mockLayoutManager.monitors = [{index: 0}];
+        mockDisplay.focus_window = {get_monitor: () => 0};
+        mockLayoutManager.emit('monitors-changed');
+
+        assert(osd.isShowing, 'OSD stays open when primary monitor remains');
+        assertEquals(osd._monitorConstraint.index, 0, 'OSD constraint updated to monitor 0');
+
+        // Momentary 0-monitor state hides active OSD safely
+        mockLayoutManager.monitors = [];
+        mockLayoutManager.emit('monitors-changed');
+        assertEquals(osd.isShowing, false, 'OSD hidden safely when 0 monitors remain');
+
+        osd.destroy();
+        assertEquals(mockLayoutManager.getListenerCount('monitors-changed'), 0, 'monitors-changed disconnected on destroy()');
+        print('  -> PASS');
+    }
+
+    // -------------------------------------------------------------
+    print('Test 9: Legacy osd-enabled key is ignored (only show-osd controls OSD)...');
+    {
+        const legacyOnlySettings = new MockSettings({'osd-enabled': false});
+        const osd = new OsdService(legacyOnlySettings);
+        assertEquals(osd.isEnabled, true, 'Legacy osd-enabled key must be ignored');
+        print('  -> PASS');
+    }
+
+    // -------------------------------------------------------------
+    print('Test 10: osd-position (center, top, bottom) updates alignment, CSS classes, and disconnects on destroy...');
+    {
+        const posSettings = createMockSettings({'osd-position': 'center'});
+        const iss = new MockInputSourceService();
+        const mem = new MockWindowMemory(false);
+        const osd = new OsdService(posSettings, iss, mem);
+        osd.enable();
+
+        assertEquals(osd.position, 'center', 'Default position is center');
+        const src = {index: 0, id: 'us', shortName: 'en', displayName: 'English (US)'};
+        osd.show(src);
+
+        assertEquals(osd.container.y_align, Clutter.ActorAlign.CENTER, 'center aligns to ActorAlign.CENTER');
+        assert(osd.container.has_style_class_name('liswitch-osd-center'), 'Container has liswitch-osd-center class');
+
+        posSettings.set_string('osd-position', 'top');
+        assertEquals(osd.position, 'top', 'Position updated to top');
+        assertEquals(osd.container.y_align, Clutter.ActorAlign.START, 'top aligns to ActorAlign.START');
+        assert(osd.container.has_style_class_name('liswitch-osd-top'), 'Container has liswitch-osd-top class');
+        assert(!osd.container.has_style_class_name('liswitch-osd-center'), 'Old center class removed');
+
+        posSettings.set_string('osd-position', 'bottom');
+        assertEquals(osd.position, 'bottom', 'Position updated to bottom');
+        assertEquals(osd.container.y_align, Clutter.ActorAlign.END, 'bottom aligns to ActorAlign.END');
+        assert(osd.container.has_style_class_name('liswitch-osd-bottom'), 'Container has liswitch-osd-bottom class');
+
+        posSettings.set_string('osd-position', 'invalid-pos');
+        assertEquals(osd.position, 'center', 'Invalid position falls back to center');
+
+        osd.destroy();
+        assertEquals(posSettings.listenerCount('changed::osd-position'), 0, 'osd-position listener disconnected on destroy()');
+        print('  -> PASS');
     }
 
     print('\n=== ALL OSD UNIT TESTS PASSED SUCCESSFULLY! ===');

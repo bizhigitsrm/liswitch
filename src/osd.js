@@ -23,11 +23,15 @@ try {
 // Check whether we are executing inside the GNOME Shell compositor environment
 const isInsideShell = typeof global !== 'undefined' && Boolean(global.stage);
 
+export const OSD_POSITIONS = ['center', 'top', 'bottom'];
+
 class MockWidget {
     constructor(params = {}) {
         this.visible = false;
         this.opacity = 255;
         this.style_class = params.style_class ?? '';
+        this.x_align = params.x_align ?? 0;
+        this.y_align = params.y_align ?? 0;
         this.text = '';
     }
 
@@ -41,6 +45,25 @@ class MockWidget {
 
     destroy() {
         this.visible = false;
+    }
+
+    add_style_class_name(cls) {
+        if (!cls)
+            return;
+        const classes = new Set(this.style_class.split(/\s+/).filter(Boolean));
+        classes.add(cls);
+        this.style_class = Array.from(classes).join(' ');
+    }
+
+    remove_style_class_name(cls) {
+        if (!cls)
+            return;
+        const classes = this.style_class.split(/\s+/).filter(c => c && c !== cls);
+        this.style_class = classes.join(' ');
+    }
+
+    has_style_class_name(cls) {
+        return this.style_class.split(/\s+/).filter(Boolean).includes(cls);
     }
 
     add_child() {}
@@ -74,12 +97,15 @@ class MockWidget {
 export const OsdService = GObject.registerClass({
     GTypeName: 'LiswitchOsdService',
 }, class OsdService extends GObject.Object {
-    constructor(settings = null, inputSourceService = null, windowMemory = null) {
+    constructor(settings = null, inputSourceService = null, windowMemory = null, options = {}) {
         super();
 
         this._settings = settings;
         this._inputSourceService = inputSourceService;
         this._windowMemory = windowMemory;
+        this._layoutManagerOverride = options.layoutManager ?? null;
+        this._displayOverride = options.display ?? null;
+        this._layoutManager = null;
 
         this._container = null;
         this._box = null;
@@ -91,17 +117,28 @@ export const OsdService = GObject.registerClass({
 
         this._hideTimeoutId = 0;
         this._currentChangedId = 0;
+        this._monitorsChangedId = 0;
+        this._positionSettingId = 0;
         this._enabled = false;
         this._lastShownSource = null;
     }
 
     /**
      * Enable the OSD service and connect to layout change events.
+     *
+     * @param {object} [options]
+     * @param {object|null} [options.layoutManager] - Optional layout manager override for testing
+     * @param {object|null} [options.display] - Optional display override for testing
      */
-    enable() {
+    enable(options = {}) {
         if (this._enabled)
             return;
         this._enabled = true;
+
+        if (options.display !== undefined)
+            this._displayOverride = options.display;
+
+        this._layoutManager = options.layoutManager ?? this._layoutManagerOverride ?? Main?.layoutManager ?? null;
 
         if (this._inputSourceService) {
             this._currentChangedId = this._inputSourceService.connect(
@@ -112,7 +149,22 @@ export const OsdService = GObject.registerClass({
             );
         }
 
-        Log.debug(`OsdService: enabled (show-osd: ${this.isEnabled}, duration: ${this.duration}ms)`);
+        if (this._layoutManager && typeof this._layoutManager.connect === 'function') {
+            this._monitorsChangedId = this._layoutManager.connect(
+                'monitors-changed',
+                () => {
+                    this._onMonitorsChanged();
+                }
+            );
+        }
+
+        if (this._settings?.settings_schema?.has_key?.('osd-position')) {
+            this._positionSettingId = this._settings.connect('changed::osd-position', () => {
+                this._applyPosition();
+            });
+        }
+
+        Log.debug(`OsdService: enabled (show-osd: ${this.isEnabled}, duration: ${this.duration}ms, position: ${this.position})`);
     }
 
     /**
@@ -126,8 +178,6 @@ export const OsdService = GObject.registerClass({
         try {
             if (this._settings.settings_schema?.has_key('show-osd'))
                 return this._settings.get_boolean('show-osd');
-            if (this._settings.settings_schema?.has_key('osd-enabled'))
-                return this._settings.get_boolean('osd-enabled');
         } catch {
             return true;
         }
@@ -166,6 +216,26 @@ export const OsdService = GObject.registerClass({
             return false;
         }
         return false;
+    }
+
+    /**
+     * Configured vertical placement of the OSD ('center', 'top', 'bottom').
+     *
+     * @returns {'center'|'top'|'bottom'}
+     */
+    get position() {
+        if (!this._settings)
+            return 'center';
+        try {
+            if (this._settings.settings_schema?.has_key('osd-position')) {
+                const pos = this._settings.get_string('osd-position');
+                if (OSD_POSITIONS.includes(pos))
+                    return pos;
+            }
+        } catch {
+            return 'center';
+        }
+        return 'center';
     }
 
     /**
@@ -232,16 +302,29 @@ export const OsdService = GObject.registerClass({
             return;
 
         if (!isInsideShell) {
-            this._container = new MockWidget({style_class: 'liswitch-osd-container'});
+            this._container = new MockWidget({
+                style_class: 'liswitch-osd-container',
+                x_align: Clutter?.ActorAlign?.CENTER ?? 2,
+                y_align: Clutter?.ActorAlign?.CENTER ?? 2,
+            });
+            if (this._layoutManager) {
+                const primary = this._layoutManager.primaryIndex ?? 0;
+                this._monitorConstraint = {index: primary};
+                this._container.add_constraint(this._monitorConstraint);
+            }
             this._box = new MockWidget({style_class: 'osd-window liswitch-osd'});
             this._icon = new MockWidget({style_class: 'liswitch-osd-icon'});
             this._vbox = new MockWidget();
             this._label = new MockWidget({style_class: 'liswitch-osd-label'});
             this._sublabel = new MockWidget({style_class: 'liswitch-osd-sublabel'});
+            this._applyPosition();
             return;
         }
 
-        const uiGroup = Compat.getUiGroup({mainModule: Main});
+        const uiGroup = Compat.getUiGroup({
+            mainModule: Main,
+            layoutManager: this._layoutManager,
+        });
 
         // Outer full-screen anchor container
         this._container = new St.Widget({
@@ -255,7 +338,7 @@ export const OsdService = GObject.registerClass({
             style_class: 'liswitch-osd-container',
         });
 
-        const primary = Main?.layoutManager?.primaryIndex ?? 0;
+        const primary = this._layoutManager?.primaryIndex ?? 0;
         this._monitorConstraint = Compat.createMonitorConstraint(Layout, primary);
         if (this._monitorConstraint)
             this._container.add_constraint(this._monitorConstraint);
@@ -296,6 +379,29 @@ export const OsdService = GObject.registerClass({
 
         if (uiGroup?.add_child)
             uiGroup.add_child(this._container);
+
+        this._applyPosition();
+    }
+
+    /**
+     * Apply vertical alignment and CSS position class to the OSD container.
+     */
+    _applyPosition() {
+        if (!this._container)
+            return;
+
+        const pos = this.position;
+        let yAlign = Clutter?.ActorAlign?.CENTER ?? 2;
+        if (pos === 'top')
+            yAlign = Clutter?.ActorAlign?.START ?? 1;
+        else if (pos === 'bottom')
+            yAlign = Clutter?.ActorAlign?.END ?? 3;
+
+        this._container.y_align = yAlign;
+
+        for (const p of OSD_POSITIONS)
+            this._container.remove_style_class_name?.(`liswitch-osd-${p}`);
+        this._container.add_style_class_name?.(`liswitch-osd-${pos}`);
     }
 
     /**
@@ -308,6 +414,69 @@ export const OsdService = GObject.registerClass({
     }
 
     /**
+     * Resolve the monitor index where the OSD should be displayed.
+     *
+     * @returns {number}
+     */
+    _resolveTargetMonitor() {
+        const layoutManager = this._layoutManager;
+        const monitorCount = layoutManager?.monitors?.length ?? 1;
+        let targetMonitor = layoutManager?.primaryIndex ?? 0;
+        if (targetMonitor < 0 || targetMonitor >= monitorCount)
+            targetMonitor = 0;
+
+        const display = this._displayOverride ?? (typeof global !== 'undefined' ? global.display : null);
+        const focusWindow = display?.focus_window ?? null;
+        if (focusWindow) {
+            try {
+                const winMon = focusWindow.get_monitor();
+                if (winMon >= 0 && winMon < monitorCount)
+                    targetMonitor = winMon;
+            } catch {
+                // Fallback to primary monitor
+            }
+        }
+
+        return targetMonitor;
+    }
+
+    /**
+     * Synchronize the monitor constraint index with current monitor layout and focus window.
+     */
+    _updateMonitorConstraint() {
+        if (!this._monitorConstraint || !this._layoutManager)
+            return;
+
+        this._monitorConstraint.index = this._resolveTargetMonitor();
+    }
+
+    /**
+     * Handle monitor configuration changes while OSD is enabled.
+     */
+    _onMonitorsChanged() {
+        if (!this._enabled)
+            return;
+
+        const monitorCount = this._layoutManager?.monitors?.length;
+        if (monitorCount === 0) {
+            if (this._container?.visible || this._hideTimeoutId) {
+                Log.debug('OsdService: monitors-changed with 0 monitors, hiding active OSD');
+                this.hide();
+            }
+            return;
+        }
+
+        if (this._container?.visible || this._hideTimeoutId) {
+            this._updateMonitorConstraint();
+            Log.debug(`OsdService: monitors-changed while OSD active, updated monitor index to ${this._monitorConstraint?.index ?? 'n/a'}`);
+        } else if (this._monitorConstraint) {
+            const currentIdx = this._monitorConstraint.index ?? 0;
+            if (currentIdx < 0 || (typeof monitorCount === 'number' && currentIdx >= monitorCount))
+                this._updateMonitorConstraint();
+        }
+    }
+
+    /**
      * Show the OSD notification with layout information.
      *
      * @param {{id: string, shortName: string, displayName: string, index?: number}} source
@@ -315,6 +484,11 @@ export const OsdService = GObject.registerClass({
     show(source) {
         if (!source || !this.isEnabled)
             return;
+
+        if (this._layoutManager?.monitors?.length === 0) {
+            Log.debug('OsdService: no monitors available, skipping show()');
+            return;
+        }
 
         this._lastShownSource = source;
         this._ensureContainer();
@@ -330,21 +504,9 @@ export const OsdService = GObject.registerClass({
             this._sublabel.visible = Boolean(subtitle && subtitle.toLowerCase() !== title.toLowerCase());
         }
 
-        // Target monitor where the focused window currently resides
-        if (this._monitorConstraint && Main?.layoutManager) {
-            let targetMonitor = Main.layoutManager.primaryIndex ?? 0;
-            const focusWindow = global.display?.focus_window;
-            if (focusWindow) {
-                try {
-                    const winMon = focusWindow.get_monitor();
-                    if (winMon >= 0 && winMon < (Main.layoutManager.monitors?.length ?? 1))
-                        targetMonitor = winMon;
-                } catch {
-                    // Fallback to primary monitor
-                }
-            }
-            this._monitorConstraint.index = targetMonitor;
-        }
+        // Target monitor where the focused window currently resides and vertical position
+        this._updateMonitorConstraint();
+        this._applyPosition();
 
         // Cancel any pending hide timeout from previous switch
         if (this._hideTimeoutId) {
@@ -353,7 +515,10 @@ export const OsdService = GObject.registerClass({
         }
 
         const isReduced = this._isReducedMotion();
-        const uiGroup = Compat.getUiGroup({mainModule: Main});
+        const uiGroup = Compat.getUiGroup({
+            mainModule: Main,
+            layoutManager: this._layoutManager,
+        });
 
         if (this._container) {
             if (uiGroup?.set_child_above_sibling)
@@ -440,6 +605,24 @@ export const OsdService = GObject.registerClass({
             this._currentChangedId = 0;
         }
 
+        if (this._monitorsChangedId && this._layoutManager) {
+            try {
+                this._layoutManager.disconnect(this._monitorsChangedId);
+            } catch (e) {
+                Log.warn(`OsdService: error disconnecting monitors-changed signal: ${e.message}`);
+            }
+            this._monitorsChangedId = 0;
+        }
+
+        if (this._positionSettingId && this._settings) {
+            try {
+                this._settings.disconnect(this._positionSettingId);
+            } catch (e) {
+                Log.warn(`OsdService: error disconnecting osd-position signal: ${e.message}`);
+            }
+            this._positionSettingId = 0;
+        }
+
         if (this._hideTimeoutId) {
             GLib.Source.remove(this._hideTimeoutId);
             this._hideTimeoutId = 0;
@@ -464,6 +647,9 @@ export const OsdService = GObject.registerClass({
         this._settings = null;
         this._inputSourceService = null;
         this._windowMemory = null;
+        this._layoutManager = null;
+        this._layoutManagerOverride = null;
+        this._displayOverride = null;
         this._enabled = false;
     }
 });

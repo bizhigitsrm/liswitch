@@ -93,6 +93,17 @@
       <description>Whether to show OSD notification when layout is restored automatically for a window.</description>
     </key>
 
+    <key name="osd-position" type="s">
+      <choices>
+        <choice value="center"/>
+        <choice value="top"/>
+        <choice value="bottom"/>
+      </choices>
+      <default>'center'</default>
+      <summary>OSD position on screen</summary>
+      <description>Vertical placement of the OSD pop-up on the active monitor: 'center', 'top', or 'bottom'.</description>
+    </key>
+
     <!-- === Горячие клавиши === -->
     <key name="hotkey-next" type="as">
       <default><![CDATA[['<Control><Alt>space']]]></default>

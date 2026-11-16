@@ -165,6 +165,9 @@ function runTests() {
         settings.set_string('indicator-position', 'center');
         assertEquals(settings.get_string('indicator-position'), 'center', 'Settings indicator-position updated');
 
+        settings.set_string('osd-position', 'top');
+        assertEquals(settings.get_string('osd-position'), 'top', 'Settings osd-position updated');
+
         // Change text correction keys
         settings.set_boolean('convert-text-enabled', true);
         assertEquals(settings.get_boolean('convert-text-enabled'), true, 'Settings convert-text-enabled toggled');
